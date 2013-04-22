@@ -83,8 +83,9 @@ LHS<-as.quantmod.OHLC(LHS,
 
 # Specify the formula for our model. We might want to make a function to build this on the fly and allow for
 # easier edits/permutations.
-form<-as.formula(Op(LHS)~Cl(MERV)+Cl(BVSP)+Cl(GSPTSE)) #+IPC+GSPC+DOW+AORD+SSEC+HSI+BSESN+JKSE+KLSE+N225+NZ50+STI+KS11+TWII+ATX+BFX+FCHI+GDAXI+AEX+
-                   #+SSMI+FTSE+GD.AT+TA100+DJC+SEAX+OMXSPI+MCX
+form<-as.formula(Op(LHS)~OpCl(MERV)+OpCl(BVSP)+OpCl(GSPTSE)+OpCl(IPC)+OpCl(GSPC)+OpCl(DOW)+OpCl(AORD)+OpCl(SSEC)+OpCl(HSI)+OpCl(BSESN)+
+                   OpCl(JKSE)+OpCl(KLSE)+OpCl(N225)+OpCl(NZ50)+OpCl(STI)+OpCl(KS11)+OpCl(TWII)+OpCl(ATX)+OpCl(BFX)+OpCl(FCHI)+OpCl(GDAXI)+
+                   OpCl(AEX)+OpCl(SSMI)+OpCl(FTSE)+OpCl(TA100)+OpCl(DJC)+OpCl(GD.AT))#+OpCl(OMXSPI))#+OpCl(MCX)+OpCl(OSEAX)
 
 # This is where I am going to depart from the traditional build using glm(...) and am going to 
 # use the specifyModel function from quantmod. I think this could give added flexibility later on.
@@ -92,14 +93,19 @@ form<-as.formula(Op(LHS)~Cl(MERV)+Cl(BVSP)+Cl(GSPTSE)) #+IPC+GSPC+DOW+AORD+SSEC+
 # type '?specifyModel' for details on the function. We will also use Next() and Lag() to test different
 # model specifications. See also: getModelData,getSymbols, buildModel,tradeModel,formula setSymbolLookup.
 
-the_model<-specifyModel(form,na.rm=TRUE)
-the_model.build<-buildModel(the_model,method='lm',training.per=c('2012-01-02','2012-03-23'))
-fittedModel(the_model.build)
-plot(the_model.build)
-coef(the_model.build)
+the_model<-specifyModel(form,na.rm=TRUE) # Specify the form of the model for quantmod...
+the_model.build<-buildModel(the_model,method='lm',training.per=c('2012-01-02','2012-03-23')) # build the model...
+fittedModel(the_model.build) # fit the model...
+summary(the_model.build) # Look at the reuslts.
+
+plot(the_model.build) # Standard suite of lm plots
+coef(the_model.build) # The coefficients of the model
+
 plot(residuals(the_model.build),type="l")
-fit<-fitted.values(the_model.build)
-plot(fit,type="l",main="Fitted Values")
+fit<-as.xts(fitted.values(the_model.build))
+plot.xts(fit,type="l",main="Fitted Values",ylim=c(-.0050,.0050))
+plot.xts(Op(LHS),type="l",main="Fitted Values",ylim=c(-.0050,.0050))
+lines(Op(LHS),col="red")
 
 # Comment: Ok. This is a good setup so far. From here, we can refine the specification of the model. (the 'form" variable)
 # TO DO:
