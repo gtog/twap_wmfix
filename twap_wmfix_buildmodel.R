@@ -12,6 +12,10 @@
 # Let's start by getting the FX into xts/zoo format. We can use the chron package to make
 # time based objects our to the strings contained in the time_stamps variable that comes from
 # the histdata.com data.
+require(glmulti)
+require(leaps)
+require(rJava)
+require(MASS)
 
 # Function defs should go here:
 makeTimeStamps<-function(rawts) {
@@ -52,11 +56,11 @@ names(fx.allt)<-"fxrate"
 # that we have converted the LHS variable to a time based class.
 
 fix.prices<-fx.allt[index(fx.allt,0)$hour==11 & index(fx.allt,0)$min==0] # A vector of all the 11am times. Our proxy for the WMR Fix.
+names(fix.prices)<-"fixing.rate"
 hour10to11<-fx.allt[(index(fx.allt,0)$hour>=10 & index(fx.allt,0)$hour<11)] # A vector of all the prices from 10am - 11am NYT.
-tempxts<-xts(as.vector(hour10to11),as.Date(index(hour10to11,0)))
-twap10to11<-suppressWarnings(xts(as.vector(by(tempxts,index(tempxts,0),mean)),index(fix.prices,0))) #THe TWAP from 10 to 11am NYT.
+twap10to11<-aggregate(hour10to11$fxrate,as.Date(index(hour10to11)),mean) #THe TWAP from 10 to 11am NYT.
 names(twap10to11)<-"twap"
-rm(tempxts)
+twap10to11<-xts(twap10to11,index(fix.prices,0))
 
 # We have now successfully generated a once per day time series of 11am observations (fix.prices). This is
 # our proxy for the WMR fixing rate published every day at 11 am. We could get more nuanced about it, but that
@@ -85,7 +89,7 @@ LHS<-as.quantmod.OHLC(LHS,
 # easier edits/permutations.
 form<-as.formula(Op(LHS)~OpCl(MERV)+OpCl(BVSP)+OpCl(GSPTSE)+OpCl(IPC)+OpCl(GSPC)+OpCl(DOW)+OpCl(AORD)+OpCl(SSEC)+OpCl(HSI)+OpCl(BSESN)+
                    OpCl(JKSE)+OpCl(KLSE)+OpCl(N225)+OpCl(NZ50)+OpCl(STI)+OpCl(KS11)+OpCl(TWII)+OpCl(ATX)+OpCl(BFX)+OpCl(FCHI)+OpCl(GDAXI)+
-                   OpCl(AEX)+OpCl(SSMI)+OpCl(FTSE)+OpCl(TA100)+OpCl(DJC)+OpCl(GD.AT))#+OpCl(OMXSPI))#+OpCl(MCX)+OpCl(OSEAX)
+                   OpCl(AEX)+OpCl(SSMI)+OpCl(FTSE)+OpCl(TA100)+OpCl(DJC))#+OpCl(GD.AT)+OpCl(OMXSPI))#+OpCl(MCX)+OpCl(OSEAX)
 
 # This is where I am going to depart from the traditional build using glm(...) and am going to 
 # use the specifyModel function from quantmod. I think this could give added flexibility later on.
@@ -107,15 +111,76 @@ plot.xts(fit,type="l",main="Fitted Values",ylim=c(-.0050,.0050))
 plot.xts(Op(LHS),type="l",main="Fitted Values",ylim=c(-.0050,.0050))
 lines(Op(LHS),col="red")
 
-# Comment: Ok. This is a good setup so far. From here, we can refine the specification of the model. (the 'form" variable)
-# TO DO:
-# 1. exand 'form' variable to include all the indices.
-# 2. convert RHS variables from Cl(x) to OpCl() or take the first differences of the indices. We want to model 
-# CHANGES in the indices against the LHS variable.
-# 3. Add some helper functions to make it easier to tinker with the data.
+# Ok. Now the model is built and fitted in quantmod fashion. That's great because it will help us later.
+# But, we also need to set the model up in generic lm() format. This will allow us to do some other useful things
+# that the quantmod format doesn't (like apply a step-wise AIC algorithm to the fit). The first thing we need to 
+# do to get that set up is creat a big clean data frame with all our variables. We can use merge.xts to successively
+# add variables using a standard "inner" join:
 
+model.df<-na.omit(merge.xts(Op(LHS),OpCl(MERV[first.date]),join="left"))
+names(model.df)<-c("LHS.Open","OpCl.MERV")
+model.df<-merge.xts(model.df,OpCl(BVSP),join="inner")
+model.df<-merge.xts(model.df,OpCl(GSPTSE),join="inner")
+model.df<-merge.xts(model.df,OpCl(IPC),join="inner")
+model.df<-merge.xts(model.df,OpCl(GSPC),join="inner")
+model.df<-merge.xts(model.df,OpCl(DOW),join="inner")
+model.df<-merge.xts(model.df,OpCl(AORD),join="inner")
+model.df<-merge.xts(model.df,OpCl(SSEC),join="inner")
+model.df<-merge.xts(model.df,OpCl(HSI),join="inner")
+model.df<-merge.xts(model.df,OpCl(BSESN),join="inner")
+model.df<-merge.xts(model.df,OpCl(JKSE),join="inner")
+model.df<-merge.xts(model.df,OpCl(KLSE),join="inner")
+model.df<-merge.xts(model.df,OpCl(N225),join="inner")
+model.df<-merge.xts(model.df,OpCl(NZ50),join="inner")
+model.df<-merge.xts(model.df,OpCl(STI),join="inner")
+model.df<-merge.xts(model.df,OpCl(KS11),join="inner")
+model.df<-merge.xts(model.df,OpCl(TWII),join="inner")
+model.df<-merge.xts(model.df,OpCl(ATX),join="inner")
+model.df<-merge.xts(model.df,OpCl(BFX),join="inner")
+model.df<-merge.xts(model.df,OpCl(FCHI),join="inner")
+model.df<-merge.xts(model.df,OpCl(GDAXI),join="inner")
+model.df<-merge.xts(model.df,OpCl(AEX),join="inner")
+model.df<-merge.xts(model.df,OpCl(SSMI),join="inner")
+model.df<-merge.xts(model.df,OpCl(FTSE),join="inner")
+model.df<-merge.xts(model.df,OpCl(TA100),join="inner")
+model.df<-merge.xts(model.df,OpCl(DJC),join="inner")
 
+# Now we can have a look at our data and coerce it to a data frame:
+model.df<-as.data.frame(model.df)
+head(model.df)
+length(model.df$LHS.Open)
 
+# fit1<-lm(LHS.Open~.,data=model.df) # This says "Construct a linear model with y = f(everything in the df except LHS)"
+fit1<-glmulti(LHS.Open~., 
+              data=model.df, 
+              intercept=TRUE,
+              level=1,
+              marginality=FALSE,
+              minsize=-1, # -1 = no constraint
+              maxsize=-1,
+              minK=-1,
+              maxK=-1,
+              crit=aic, 
+              fitfunc=lm, 
+              method="l", # "h"=exhaustive, "g"=genetic algorithm, "l"=very fast, exhaustive, branch and bound, "d"=simple summary
+              plotty=TRUE, #plot progression of IC profile while running...
+              report=TRUE,
+              confsetsize=1000) # other params for controlling a genetic algorithm are not listed.
+
+print(summary(fit1)$bestmodel) # just show me the best model, please...
+summary(fit1) # show me all the details of all the model fitted...
+plot(fit1,type="p") # plot the progression of the _ic...
+aicvalues<-summary(fit1)$icvalues
+complexity<-fit1@K
+allmodels<-fit1@objects
+
+# How complex are the models selected?
+plot(aicvalues,complexity)
+
+# Ok. Let's just look at the best model produced...
+bestmod<-lm(LHS.Open~1+OpCl.IPC+OpCl.DOW+OpCl.BSESN+OpCl.GDAXI+OpCl.SSMI+OpCl.TA100, data=model.df)
+summary(bestmod)
+plot(residuals(bestmod),type="l")
 
 
 
