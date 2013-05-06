@@ -247,7 +247,6 @@ fit2<-glmulti(LHS.Open~.,
               confsetsize=1000) # other params for controlling a genetic algorithm are not listed.
 
 print(summary(fit2)$bestmodel) # just show me the best model, please...
-summary(fit2) 
 
 # We've now run a genetic algorithm with interaction terms and derived a new best model. Let's see how well this model can do
 # in getting the sign right...
@@ -261,6 +260,7 @@ lines(fitvals2,col="blue")
 
 signal.perf2<-sign(fitvals2)*sign(actuals2)
 plot(density(signal.perf2),type="l",col="red")
+lines(density(signal.perf),col="dark grey")
 count(signal.perf2<0)
 
 # Now we only get the sign wrong 23% of the time and we get it righ, 77% of the time. That's a significant improvement
