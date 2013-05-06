@@ -35,7 +35,7 @@ makeTimeStamps<-function(rawts) {
   ret<-strptime(newstamps,"%Y-%m-%d %H:%M:%S")
   return(ret)
 }
-makeRHS<-function()
+
 # We need to get our variables in the right format before we proceed. This basically means we need
 # to convert the FX data we downloaded into xts/zoo format. The first step in doing so is creating 
 # a series of time stamps that are in a legitimate time based class supported by xts().
@@ -111,6 +111,15 @@ plot.xts(fit,type="l",main="Fitted Values",ylim=c(-.0050,.0050))
 plot.xts(Op(LHS),type="l",main="Fitted Values",ylim=c(-.0050,.0050))
 lines(Op(LHS),col="red")
 
+# Let's drop the insignificant predictors and re-fit the model. Here is the slimmed down model:
+form2<-as.formula(Op(LHS)~OpCl(MERV)+OpCl(IPC)+OpCl(GSPC)+OpCl(BSESN)+OpCl(KLSE)+OpCl(N225)+OpCl(TWII)+OpCl(BFX)+OpCl(TA100)+OpCl(DJC))
+model2<-specifyModel(form2,na.rm=TRUE)
+model2.build<-buildModel(model2,method='lm',training.per=c('2012-01-02','2012-03-23'))
+fittedModel(model2.build) # fit the model...
+summary(model2.build) 
+
+####### Begin AIC optimization section #######
+
 # Ok. Now the model is built and fitted in quantmod fashion. That's great because it will help us later.
 # But, we also need to set the model up in generic lm() format. This will allow us to do some other useful things
 # that the quantmod format doesn't (like apply a step-wise AIC algorithm to the fit). The first thing we need to 
@@ -181,6 +190,80 @@ plot(aicvalues,complexity)
 bestmod<-lm(LHS.Open~1+OpCl.IPC+OpCl.DOW+OpCl.BSESN+OpCl.GDAXI+OpCl.SSMI+OpCl.TA100, data=model.df)
 summary(bestmod)
 plot(residuals(bestmod),type="l")
+actuals<-model.df$LHS.Open
+fitvals<-as.vector(fitted(bestmod))
+plot(actuals,type="l",col="red")
+lines(fitvals,col="blue")
+
+# It's a little hard to see how we're doing from the plot, but there are a few good things in the summary. We are able to 
+# explain about 25% of the variation in our response variable. That's not great, but it's not all bad either. We seem unable
+# to capture the full magnitude of the response fluctuations, but we really don't need to. Meaning, all we really care about 
+# is getting the SIGN right. That is, we want to be able to predict when the difference between the TWAP and the FIX is going
+# to be positive or negative. We don't really care by how much, we just want to be on the correct side of the trade. As long
+# as the differences aren't below our bid/offer cost of execution, we should be profitable as long as we get the sign right.
+# If we get the SIGN wrong, well then we have the exact wrong trade on and will lose the full magnitude of the difference.
+
+# So, let's see how well we get the sign right with our "best" model. We'll create a new variable that is 1 if we get the sign
+# correct and -1 otherwise.
+
+signal.perf<-sign(fitvals)*sign(actuals)
+plot(density(signal.perf),type="l",col="red")
+count(signal.perf<0)
+
+# So, we seem to get the sign right about 70% of the time. Conversely, we are wrong about 30% of the time with this model.
+# Let's try adding some foreign exchange rates to our "best" model and re-run the exhaustive AIC minimization:
 
 
+model2.df<-na.omit(merge.xts(Op(LHS),OpCl(IPC[first.date]),join="left"))
+names(model2.df)<-c("LHS.Open","OpCl.IPC")
+model2.df<-merge.xts(model2.df,OpCl(DOW),join="inner")
+model2.df<-merge.xts(model2.df,OpCl(BSESN),join="inner")
+model2.df<-merge.xts(model2.df,OpCl(GDAXI),join="inner")
+model2.df<-merge.xts(model2.df,OpCl(SSMI),join="inner")
+model2.df<-merge.xts(model2.df,OpCl(TA100),join="inner")
+model2.df<-merge.xts(model2.df,na.omit(Return.calculate(DEXUSAL)),join="inner") # AUDUSD 
+model2.df<-merge.xts(model2.df,na.omit(Return.calculate(DEXINUS)),join="inner") # USDINR
+model2.df<-merge.xts(model2.df,na.omit(Return.calculate(DEXBZUS)),join="inner") # USDBRL
+model2.df<-merge.xts(model2.df,na.omit(Return.calculate(DEXCAUS)),join="inner") # USDCAD
+model2.df<-merge.xts(model2.df,na.omit(Return.calculate(DEXUSEU)),join="inner") # EURUSD
+model2.df<-merge.xts(model2.df,na.omit(Return.calculate(DEXJPUS)),join="inner") # USDJPY
+model2.df<-merge.xts(model2.df,na.omit(Return.calculate(DEXMXUS)),join="inner") # USDMXN
+model2.df<-merge.xts(model2.df,na.omit(Return.calculate(DEXKOUS)),join="inner") # USDKRW
+
+fit2<-glmulti(LHS.Open~., 
+              data=model2.df, 
+              intercept=TRUE,
+              level=2,
+              marginality=FALSE,
+              minsize=-1, # -1 = no constraint
+              maxsize=-1,
+              minK=-1,
+              maxK=-1,
+              crit=aic, 
+              fitfunc=lm, 
+              method="g", # "h"=exhaustive, "g"=genetic algorithm, "l"=very fast, exhaustive, branch and bound, "d"=simple summary
+              plotty=TRUE, #plot progression of IC profile while running...
+              report=TRUE,
+              confsetsize=1000) # other params for controlling a genetic algorithm are not listed.
+
+print(summary(fit2)$bestmodel) # just show me the best model, please...
+summary(fit2) 
+
+# We've now run a genetic algorithm with interaction terms and derived a new best model. Let's see how well this model can do
+# in getting the sign right...
+
+newform<-as.formula(summary(fit2)$bestmodel)
+bestmod2<-lm(newform,data=model2.df)
+actuals2<-as.vector(model2.df$LHS.Open)
+fitvals2<-as.vector(fitted(bestmod2))
+plot(actuals2,type="l",col="red")
+lines(fitvals2,col="blue")
+
+signal.perf2<-sign(fitvals2)*sign(actuals2)
+plot(density(signal.perf2),type="l",col="red")
+count(signal.perf2<0)
+
+# Now we only get the sign wrong 23% of the time and we get it righ, 77% of the time. That's a significant improvement
+# in our ability to predict the TWAP vs. FIX difference. Let's now do some out of sample testing on new data and plot the 
+# performance of the strategy over time.
 

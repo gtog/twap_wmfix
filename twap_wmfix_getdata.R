@@ -15,6 +15,8 @@ suppressWarnings(library(ggplot2))
 suppressWarnings(library(plyr))
 suppressWarnings(library(knitr))
 suppressWarnings(library(chron))
+suppressWarnings(library(glmulti))
+suppressWarnings(library(quandl))
 
 # Establish data source and tickers for each of the indices. These will be our RHS variables.
 # Function getData() takes the tickers and the data source vectors and puts the variables 
@@ -158,5 +160,22 @@ indices.commod<-c(DJC[first.date])
 
 # end twap_wmfix_getdata
 
+# Some daily, exchange rate data from the FRED database. These will be used as predictor variables. The 
+# other exchange rate data is high frequency data and is used for the creation of the response variable.
+fx.fred<-c("DEXUSAL","DEXINUS","DEXBZUS","DEXCAUS","DEXUSEU","DEXJPUS","DEXMXUS","DEXKOUS")
+suppressWarnings(getData(fx.fred,"FRED"))
+
+
+# Begin Quandl setup, if needed in the future:
+auth_token<-c("JBv8RdKEBzzQeqTox9Ad") # You can find this on your 'Account' page on Quandl under the API tab.
+code="enter-code-here"
+
+Quandl(code, type = "xts" #c("raw", "ts", "zoo", "xts"),
+       start_date=substr(first.date,0,10), 
+       end_date=Sys.Date(),
+       transformation = "", #c("", "diff", "rdiff", "normalize", "cumul"),
+       collapse = "", #c("", "weekly", "monthly", "quarterly", "annual"),
+       rows,
+       authcode = Quandl.auth(auth_token))
 
 
