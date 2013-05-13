@@ -24,6 +24,7 @@ suppressWarnings(library(chron))
 suppressWarnings(library(glmulti))
 suppressWarnings(library(Quandl))
 
+# We also need the makeTimeStamps() function from twap_wmfix_buildmodel.R...
 makeLHS<-function(data) {
   # Takes a data object and year and constructs a quantmod OHLC object which is the FIX - TWAP for that
   # variable. The data should be one of the minute interval data sets in OHLC, xts format.
@@ -55,7 +56,6 @@ makeLHS<-function(data) {
                         name = NULL)
   return(LHS)
 }
-# We also need the makeTimeStamps() function from twap_wmfix_buildmodel.R. 
 makeTimeStamps<-function(rawts) {
   # Takes raw time stamp data from histdata.com downloads and converts it into a POSIXct format
   # that we can pass to xts or other time based functions.
@@ -131,19 +131,20 @@ getOHLC<-function(assets,OHLC){
 # Now that we have a LHS constructor function that returns the LHS, the TWAP, and the fixing prices, 
 # we can move on to setting some variables to pass to the function and making a new response variable.
 
-pair<-"eurusd"
-training.year=c("2011")
-new.year=c("2012")
 data.names<-c("time_stamp","open_bid","high_bid","low_bid","close_bid","volume")
-# If any other pair other than eurusd, use the read.table(). See twap_wmfix_getdata lines 116-127.
-# At any rate, alter the next 2 lines to get the data into the workspace.
-train.data<-read.table(paste("~/R/R Projects/twap_wmfix/data/",training.year,"/DAT_ASCII_EURUSD_M1_",training.year,".csv",sep=""), sep=";", quote="\"")
-new.data<-read.csv(paste("~/R/R Projects/twap_wmfix/data/",new.year,"/DAT_ASCII_EURUSD_M1_",new.year,".csv",sep=""), sep=",", quote="\"")
-names(train.data)<-data.names
-names(new.data)<-data.names
-first.train.date<-c("2011-01-03/")
-first.new.date<-c("2012-01-02/")
 
+# If any other pair other than eurusd, use the read.table(). See twap_wmfix_getdata lines 116-127.
+pair<-"eurusd"
+
+training.year=c("2011")
+train.data<-read.table(paste("~/R/R Projects/twap_wmfix/data/",training.year,"/DAT_ASCII_EURUSD_M1_",training.year,".csv",sep=""), sep=";", quote="\"")
+names(train.data)<-data.names
+first.train.date<-c("2011-01-03/")
+
+new.year=c("2009")
+new.data<-read.csv(paste("~/R/R Projects/twap_wmfix/data/",new.year,"/DAT_ASCII_EURUSD_M1_",new.year,".csv",sep=""), sep=";", quote="\"")
+names(new.data)<-data.names
+first.new.date<-c("2009-01-02/")
 
 # Check to make sure we have 2 good looking data sets from different years...
 head(train.data)
