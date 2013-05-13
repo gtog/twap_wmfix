@@ -234,4 +234,44 @@ count(train.signal.perf<0)
 # Well, we've prepared for that with the creation of the new.data set. For this part of the process, we'll need to
 # create a new data frame with the new data:
 
+new.LHS<-makeLHS(new.data) # The new response variable...
 
+new.df<-na.omit(merge.xts(Op(new.LHS),OpCl(IPC[first.new.date]),join="left"))
+names(new.df)<-c("LHS.Open","OpCl.IPC")
+new.df<-merge.xts(new.df,OpCl(DOW),join="inner")
+new.df<-merge.xts(new.df,OpCl(BSESN),join="inner")
+new.df<-merge.xts(new.df,OpCl(GDAXI),join="inner")
+new.df<-merge.xts(new.df,OpCl(SSMI),join="inner")
+new.df<-merge.xts(new.df,OpCl(TA100),join="inner")
+new.df<-merge.xts(new.df,na.omit(Return.calculate(DEXUSAL)),join="inner") # AUDUSD 
+new.df<-merge.xts(new.df,na.omit(Return.calculate(DEXINUS)),join="inner") # USDINR
+new.df<-merge.xts(new.df,na.omit(Return.calculate(DEXBZUS)),join="inner") # USDBRL
+new.df<-merge.xts(new.df,na.omit(Return.calculate(DEXCAUS)),join="inner") # USDCAD
+new.df<-merge.xts(new.df,na.omit(Return.calculate(DEXUSEU)),join="inner") # EURUSD
+new.df<-merge.xts(new.df,na.omit(Return.calculate(DEXJPUS)),join="inner") # USDJPY
+new.df<-merge.xts(new.df,na.omit(Return.calculate(DEXMXUS)),join="inner") # USDMXN
+new.df<-merge.xts(new.df,na.omit(Return.calculate(DEXKOUS)),join="inner") # USDKRW
+
+head(new.df)
+
+# We don't want to estimate a new model, we want to use the one estimated on the training data: train.form
+new.model<-lm(train.form,data=new.df)
+summary(new.model)
+
+new.actuals<-as.vector(new.df$LHS.Open)
+new.fitted<-as.vector(fitted(new.model))
+plot(new.actuals,type="l",col="dark grey")
+lines(new.fitted,col="blue")
+
+plot(residuals(new.model),type="l",col="red")
+
+# So, once we're in production, how often are we on the right side of the trade?
+new.signal.perf<-sign(new.fitted)*sign(new.actuals)
+plot(density(new.signal.perf),type="l",col="red",ylim=c(0,1.3))
+lines(density(train.signal.perf),type="l",col="dark grey")
+count(new.signal.perf<0)
+
+# The model performance has degraded on an out of sample basis from 23% error rate to 26% error rate.
+# Whether that is acceptable or not is something we'll have to debate. We can easily now test the performance
+# over many NEW data sets and see how we fare, assuming we never update the coefficients of the model, or
+# perhaps under some other updating rule (daily, monthly, quarterly updating etc.)
