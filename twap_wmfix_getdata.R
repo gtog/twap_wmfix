@@ -16,7 +16,7 @@ suppressWarnings(library(plyr))
 suppressWarnings(library(knitr))
 suppressWarnings(library(chron))
 suppressWarnings(library(glmulti))
-suppressWarnings(library(quandl))
+suppressWarnings(library(Quandl))
 
 # Establish data source and tickers for each of the indices. These will be our RHS variables.
 # Function getData() takes the tickers and the data source vectors and puts the variables 
@@ -30,7 +30,7 @@ data.source = c("yahoo")
 first.date<-c("2012-01-02/") # Base date for the analysis. 
 year<-substr(first.date,1,4)
 OHLC.indices<-c("Close") # Closing index value for the DAY...(ie. each DAY has an OHLC)
-OHLC.FX("Close") # Closing bid FX price for the MINUTE...(ie. each MINUTE has an OHLC)
+OHLC.FX<-c("Close") # Closing bid FX price for the MINUTE...(ie. each MINUTE has an OHLC)
 
 # Function definitions should be defined here:
 getData<-function(tickers,datasrc){
@@ -113,7 +113,7 @@ suppressWarnings(getData(tickers.africame,data.source))
 suppressWarnings(getData(tickers.commod,data.source))
 
 # Import some high frequency data from local files...(Year 2012 in 1 minute intervals. Can be exanded.)
-eurusd.data<-read.csv(paste("~/R/R Projects/twap_wmfix/data/",year,"/DAT_ASCII_EURUSD_M1_",year,".csv")) 
+eurusd.data<-read.csv(paste("~/R/R Projects/twap_wmfix/data/",year,"/DAT_ASCII_EURUSD_M1_",year,".csv",sep="")) 
 usdjpy.data<-read.table(paste("~/R/R Projects/twap_wmfix/data/",year,"/DAT_ASCII_USDJPY_M1_",year,".csv",sep=""), sep=";", quote="\"")
 gbpusd.data<-read.table(paste("~/R/R Projects/twap_wmfix/data/",year,"/DAT_ASCII_GBPUSD_M1_",year,".csv",sep=""), sep=";", quote="\"")
 usdchf.data<-read.table(paste("~/R/R Projects/twap_wmfix/data/",year,"/DAT_ASCII_USDCHF_M1_",year,".csv",sep=""), sep=";", quote="\"")

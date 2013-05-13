@@ -266,4 +266,5 @@ count(signal.perf2<0)
 # Now we only get the sign wrong 23% of the time and we get it righ, 77% of the time. That's a significant improvement
 # in our ability to predict the TWAP vs. FIX difference. Let's now do some out of sample testing on new data and plot the 
 # performance of the strategy over time.
+# Next, we need to test the derived model on some new data to see how well it performs.
 
