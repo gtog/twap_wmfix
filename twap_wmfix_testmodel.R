@@ -36,13 +36,17 @@ makeLHS<-function(data) {
   names(fx.allt)<-"fxrate"
   
   fix.prices<-fx.allt[index(fx.allt,0)$hour==11 & index(fx.allt,0)$min==0] # vector of all 11am prices...
+  fix.dates<-as.Date(index(fix.prices,0))
+  fix.prices<-xts(fix.prices,fix.dates)
   names(fix.prices)<-"fixing.rate"
-  hour10to11<-fx.allt[(index(fx.allt,0)$hour>=10 & index(fx.allt,0)$hour<11)] # A vector of all the prices from 10am - 11am NYT.
-  twap10to11<-aggregate(hour10to11$fxrate,as.Date(index(hour10to11)),mean) #THe TWAP from 10 to 11am NYT.
-  names(twap10to11)<-"twap"
-  twap10to11<-xts(twap10to11,index(fix.prices,0))
   
-  LHS<-xts((fix.prices-twap10to11),as.Date(index(fix.prices,0)))
+  hour10to11<-fx.allt[(index(fx.allt,0)$hour>=10 & index(fx.allt,0)$hour<11)] # A vector of all the prices from 10am - 11am NYT.
+  twap10to11<-aggregate(hour10to11$fxrate,as.Date(index(hour10to11,0)),mean) # THe TWAP from 10 to 11am NYT.
+  names(twap10to11)<-"twap"
+  
+  temp<-merge.xts(fix.prices,twap10to11,join="inner") # this is done to resolve vector length issues.
+  
+  LHS<-temp$fixing.rate-temp$twap
   lhs.h<-xts(rep(0,length(LHS)),index(LHS,0))
   lhs.l<-xts(rep(0,length(LHS)),index(LHS,0))
   lhs.c<-xts(rep(0,length(LHS)),index(LHS,0))
@@ -141,10 +145,10 @@ train.data<-read.table(paste("~/R/R Projects/twap_wmfix/data/",training.year,"/D
 names(train.data)<-data.names
 first.train.date<-c("2011-01-03/")
 
-new.year=c("2009")
+new.year=c("2010")
 new.data<-read.csv(paste("~/R/R Projects/twap_wmfix/data/",new.year,"/DAT_ASCII_EURUSD_M1_",new.year,".csv",sep=""), sep=";", quote="\"")
 names(new.data)<-data.names
-first.new.date<-c("2009-01-02/")
+first.new.date<-c("2010-01-02/")
 
 # Check to make sure we have 2 good looking data sets from different years...
 head(train.data)
@@ -275,4 +279,18 @@ count(new.signal.perf<0)
 # The model performance has degraded on an out of sample basis from 23% error rate to 26% error rate.
 # Whether that is acceptable or not is something we'll have to debate. We can easily now test the performance
 # over many NEW data sets and see how we fare, assuming we never update the coefficients of the model, or
-# perhaps under some other updating rule (daily, monthly, quarterly updating etc.)
+# perhaps under some other updating rule (daily, monthly, quarterly updating etc.). Ok, so let's run all the years
+# we have. Here are the steps:
+# 1. Set new.year
+# 2. Get the new data
+# 3. make new LHS
+# 4. make new DF
+# 5. make new model
+# 6. plot new actuals vs. new fitted
+# 7. store and print error rate. 
+
+runSamples<-function(years,trainedmodel){
+  # this function will run through a bunch of years and compare the results to whatever model is stored
+  # in trainedmodel.
+  
+}
