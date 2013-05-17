@@ -140,10 +140,10 @@ data.names<-c("time_stamp","open_bid","high_bid","low_bid","close_bid","volume")
 # If any other pair other than eurusd, use the read.table(). See twap_wmfix_getdata lines 116-127.
 pair<-"eurusd"
 
-training.year=c("2011")
+training.year=c("2007")
 train.data<-read.table(paste("~/R/R Projects/data/",training.year,"/DAT_ASCII_EURUSD_M1_",training.year,".csv",sep=""), sep=";", quote="\"")
 names(train.data)<-data.names
-first.train.date<-c("2011-01-03/")
+first.train.date<-c("2007-01-02/")
 
 new.year=c("2010")
 new.data<-read.csv(paste("~/R/R Projects/data/",new.year,"/DAT_ASCII_EURUSD_M1_",new.year,".csv",sep=""), sep=";", quote="\"")
@@ -181,13 +181,21 @@ train.df<-merge.xts(train.df,OpCl(GDAXI),join="inner")
 train.df<-merge.xts(train.df,OpCl(SSMI),join="inner")
 train.df<-merge.xts(train.df,OpCl(TA100),join="inner")
 train.df<-merge.xts(train.df,na.omit(Return.calculate(DEXUSAL)),join="inner") # AUDUSD 
-train.df<-merge.xts(train.df,na.omit(Return.calculate(DEXINUS)),join="inner") # USDINR
+#train.df<-merge.xts(train.df,na.omit(Return.calculate(DEXINUS)),join="inner") # USDINR
 train.df<-merge.xts(train.df,na.omit(Return.calculate(DEXBZUS)),join="inner") # USDBRL
-train.df<-merge.xts(train.df,na.omit(Return.calculate(DEXCAUS)),join="inner") # USDCAD
+#train.df<-merge.xts(train.df,na.omit(Return.calculate(DEXCAUS)),join="inner") # USDCAD
 train.df<-merge.xts(train.df,na.omit(Return.calculate(DEXUSEU)),join="inner") # EURUSD
 train.df<-merge.xts(train.df,na.omit(Return.calculate(DEXJPUS)),join="inner") # USDJPY
 train.df<-merge.xts(train.df,na.omit(Return.calculate(DEXMXUS)),join="inner") # USDMXN
 train.df<-merge.xts(train.df,na.omit(Return.calculate(DEXKOUS)),join="inner") # USDKRW
+
+# NEW: Let's add some lagged variables of the currency pair were modeling. For example, let's
+# add the first 3 daily lags to the model and see what happens out of sample...
+ccy.lag1<-na.omit(lag(Return.calculate(DEXUSEU),1))
+ccy.lag3<-na.omit(lag(Return.calculate(DEXUSEU),3))
+
+train.df<-merge.xts(train.df,ccy.lag1,join="inner") # ccy pair returns lagged 1 day
+train.df<-merge.xts(train.df,ccy.lag3,join="inner") # lagged 3 days
 
 train.df<-as.data.frame(train.df)
 
@@ -272,8 +280,8 @@ plot(residuals(new.model),type="l",col="red")
 
 # So, once we're in production, how often are we on the right side of the trade?
 new.signal.perf<-sign(new.fitted)*sign(new.actuals)
-plot(density(new.signal.perf),type="l",col="red",ylim=c(0,1.3))
-lines(density(train.signal.perf),type="l",col="dark grey")
+plot(density(new.signal.perf),col="red",ylim=c(0,1.3))
+lines(density(train.signal.perf),col="dark grey")
 count(new.signal.perf<0)
 
 # The model performance has degraded on an out of sample basis from 23% error rate to 26% error rate.
@@ -289,8 +297,8 @@ count(new.signal.perf<0)
 # 6. plot new actuals vs. new fitted
 # 7. return a list of fitted, actuals, and signal performance.
 
-sample.years<-c("2007","2008","2009","2010")
-sample.model<-train.model # Currently 2011 trained...
+sample.years<-c("2008","2009","2010","2011","2012")
+sample.model<-train.model # Currently 2007 trained...
 
 runSamples<-function(years,trainedmodel){
   # this function will run through a bunch of years and compare the results to whatever model is stored
@@ -300,7 +308,8 @@ runSamples<-function(years,trainedmodel){
   
   for (i in 1:length(years)) {
     newyear<-years[i]
-    newdata<-read.csv(paste("~/R/R Projects/data/",newyear,"/DAT_ASCII_EURUSD_M1_",newyear,".csv",sep=""), sep=";", quote="\"")
+    if (years[i]=="2012") separ=c(",") else separ=c(";")
+    newdata<-read.csv(paste("~/R/R Projects/data/",newyear,"/DAT_ASCII_EURUSD_M1_",newyear,".csv",sep=""), sep=separ, quote="\"")
     names(newdata)<-c("time_stamp","open_bid","high_bid","low_bid","close_bid","volume")
     firstnewdate<-substr(newdata$time_stamp[1],0,8)
     firstnewdate<-paste(substr(firstnewdate,0,4),"-",substr(firstnewdate,5,6),"-",substr(firstnewdate,7,8),"/",sep="")
@@ -337,23 +346,15 @@ runSamples<-function(years,trainedmodel){
     
     retlist[[i]]<-as.data.frame(cbind(dts,newfitted,newactuals,sign(newfitted)*sign(newactuals)))
     names(retlist[[i]])<-c("date","fitted","actual","sig.perf")
-    cat("First run complete. Starting next sample year.","\n")
+    
+    err.rate<-count(retlist[[i]]$sig.perf<0)$freq[2]/length(retlist[[i]]$sig.perf)
+    
+    cat("Sample year complete. Error rate was: ",round(err.rate,4),"Starting next sample year.","\n")
   }
-  cat("Finished. Returning data list and exiting.","\n")
+  cat("Finished all years. Returning data list and exiting.","\n")
   return(retlist)
 }
 out<-runSamples(sample.years,sample.model)
-
-# Looking at the error distributions...
-err<-list()
-for (i in 1:length(out)){
-  err[[i]]<-subset(-1*(abs(out[[i]]$actual)+abs(out[[i]]$fitted)),subset=c(out[[i]]$sig.perf<0))
-}
-plot(density(err[[1]]),type="l",col="dark grey")
-lines(density(err[[2]],type="l",col="dark grey"))
-lines(density(err[[3]],col="dark grey"))
-merr<-sapply(err,MARGIN=2,FUN=mean)
-lines(density(merr),col="red")
 
 # Let's create some strategy performance metrics...
 # For each out-of-sample year, we want to look at each day and measure how well we did. We'll store this 
@@ -368,6 +369,7 @@ lines(density(merr),col="red")
 # In this case our P/L = +actual.
 # If the variable sig.perf==-1, then we are on the wrong side of the trade...
 # In this case, our P/L = -actual. 
+
 profit<-NULL
 for (i in 1:length(out)) {
   p<-xts(out[[i]]$sig.perf*abs(out[[i]]$actual),as.Date(out[[i]]$date))
@@ -378,21 +380,27 @@ plot.xts(profit.index, main="Out of Sample Performance: Cumulative")
 
 # or...we can look at each year's performance.
 par(mfrow=c(2,2))
-profit1<-xts(out[[1]]$sig.perf*abs(out[[1]]$actual),as.Date(out[[1]]$date))
-profit1<-makeIndex(profit1,inv=FALSE,ret=TRUE)
-plot.xts(profit1,main="Out of Sample Performance: 2007")
 
-profit2<-xts(out[[2]]$sig.perf*abs(out[[2]]$actual),as.Date(out[[2]]$date))
-profit2<-makeIndex(profit2,inv=FALSE,ret=TRUE)
-plot.xts(profit2,main="Out of Sample Performance: 2008")
+for (i in 1:length(out)){
+  p<-xts(out[[i]]$sig.perf*abs(out[[i]]$actual),as.Date(out[[i]]$date))
+  p<-makeIndex(p,inv=FALSE,ret=TRUE)
+  y<-substr(index(p,0)[1],0,4)
+  plot.xts(p,main=paste("Out of Sample Performance: ",y))
+  rm(p)
+}
 
-profit3<-xts(out[[3]]$sig.perf*abs(out[[3]]$actual),as.Date(out[[3]]$date))
-profit3<-makeIndex(profit3,inv=FALSE,ret=TRUE)
-plot.xts(profit3,main="Out of Sample Performance: 2009")
-
-profit4<-xts(out[[4]]$sig.perf*abs(out[[4]]$actual),as.Date(out[[4]]$date))
-profit4<-makeIndex(profit4,inv=FALSE,ret=TRUE)
-plot.xts(profit3,main="Out of Sample Performance: 2010")
+# Looking at the error distributions...
+err<-list()
+for (i in 1:length(out)){
+  err[[i]]<-subset(-1*(abs(out[[i]]$actual)+abs(out[[i]]$fitted)),subset=c(out[[i]]$sig.perf<0))
+}
+plot(density(err[[1]]),col="dark grey",ylim=c(0,800),xlim=c(-.0060,.0010),
+     main="Error Densities for each sample year: 2008:2012")
+for (i in 2:length(out)) {
+  lines(density(err[[i]]),col="dark grey")
+}
+merr<-sapply(err,MARGIN=2,FUN=mean)
+plot(density(merr),col="red",main="Density of Mean Error")
 
 par(mfrow=c(1,1))
 
