@@ -339,6 +339,7 @@ runSamples<-function(years,trainedmodel,binary){
     cat(firstnewdate)
     
     newLHS<-makeLHS(newdata,binary)
+    actuals.pips<-Hi(newLHS)
     
     newdf<-na.omit(merge.xts(Op(newLHS),OpCl(IPC[firstnewdate]),join="left"))
     names(newdf)<-c("LHS.Open","OpCl.IPC")
@@ -358,10 +359,12 @@ runSamples<-function(years,trainedmodel,binary){
 
     dts<-as.Date(index(newdf,0))
     if (binary) {
-      newmod<-glm(traindedmodel,data=newdf,family=binary(link="logit"))
+      newmod<-glm(traindedmodel,data=newdf,family=binomial(link="logit"))
     } else {
       newmod<-lm(traindedmodel,data=newdf)
     }
+    
+    newdf<-merge.xts(newdf,na.omit(actuals.pips),join="inner") # Add the actuals.pips column, but after estimation...
     
     newactuals<-as.vector(newdf$LHS.Open)
     newfitted<-as.vector(fitted(newmod))
@@ -370,11 +373,11 @@ runSamples<-function(years,trainedmodel,binary){
     
     perf<-NULL
     if (binary) {
-      for (i in 1:length(newfitted)){
-        if ((newfitted[i]>.5 && newactuals[i]>.5) || (newfitted[i]<.5 && newactuals[i]<.5)){
-          perf[i]<-1 # Trade was successful
+      for (j in 1:length(newfitted)){
+        if ((newfitted[j]>.5 && newactuals[j]>.5) || (newfitted[j]<.5 && newactuals[j]<.5)){
+          perf[j]<-1 # Trade was successful
         } else {
-          perf[i]<-0 # Trade was not successful.
+          perf[j]<-0 # Trade was not successful.
         }
       }
       err.rate<-count(perf==0)$freq[2]/length(perf)
@@ -382,8 +385,11 @@ runSamples<-function(years,trainedmodel,binary){
       perf<-sign(newfitted)*sign(newactuals)
       err.rate<-count(perf<0)$freq[2]/length(perf)
     }
-    retlist[[i]]<-as.data.frame(cbind(dts,newfitted,newactuals,perf))
-    names(retlist[[i]])<-c("date","fitted","actual","sig.perf")
+    
+    newdf<-merge.xts(newdf,perf,join="inner") # Add the performance stats...
+    
+    retlist[[i]]<-data.frame(dts,newfitted,newdf$LHS.Open,perf,newdf$LHS.High)
+    names(retlist[[i]])<-c("dates","fitted","actual","sig.perf","actuals.pips")
     
     cat("Sample year complete. Error rate was: ",round(err.rate,4),"Starting next sample year.","\n")
   }
@@ -439,7 +445,7 @@ merr<-sapply(err,MARGIN=2,FUN=mean)
 plot(density(merr),col="red",main="Density of Mean Error")
 par(mfrow=c(1,1))
 
-###### Experiment: Create a new response variable which is either "Above" == 1 or "Below"==0
+# Experiment: Create a new response variable which is either "Above" == 1 or "Below"==0
 # to represent cases where the FIX - TWAP > 0 and FIX - TWAP < 0. This is similar to our sign.perf
 # variable which tries to capture whether we got the sign right. Meaning, did we have the right
 # trade on, regardless of the magnitude of the prediction error. By converting to a binary response
@@ -514,35 +520,37 @@ sample.years<-c("2008","2009","2010","2011","2012")
 sample.model<-train.model # Currently 2007 trained...
 out.binary<-runSamples(sample.years,sample.model,binary=TRUE)
 
-profit<-NULL
-for (i in 1:length(out)) {
-  p<-xts(out.binary[[i]]$sig.perf*abs(out[[i]]$actual),as.Date(out[[i]]$date))
-  profit<-append(profit,p)
+profit.bin<-NULL
+for (i in 1:length(out.binary)) {
+  out.binary[[i]]$sig.perf[out.binary[[i]]$sig.perf==0]<--1
+  p.bin<-xts(out.binary[[i]]$sig.perf*abs(out.binary[[i]]$actuals.pips),as.Date(out.binary[[i]]$dates))
+  profit.bin<-append(profit.bin,p.bin)
 }
-profit.index<-makeIndex(profit,inv=FALSE,ret=TRUE)
-plot.xts(profit.index, main="Out of Sample Performance: Cumulative")
+profit.bin.index<-makeIndex(profit.bin,inv=FALSE,ret=TRUE)
+plot.xts(profit.bin.index, main="Out of Sample Performance: Cumulative")
 
 # or...we can look at each year's performance.
 par(mfrow=c(2,2))
 
-for (i in 1:length(out)){
-  p<-xts(out[[i]]$sig.perf*abs(out[[i]]$actual),as.Date(out[[i]]$date))
-  p<-makeIndex(p,inv=FALSE,ret=TRUE)
-  y<-substr(index(p,0)[1],0,4)
-  plot.xts(p,main=paste("Out of Sample Performance: ",y))
-  rm(p)
+for (i in 1:length(out.binary)){
+  out.binary[[i]]$sig.perf[out.binary[[i]]$sig.perf==0]<--1
+  p.bin<-xts(out.binary[[i]]$sig.perf*abs(out.binary[[i]]$actuals.pips),as.Date(out.binary[[i]]$dates))
+  p.bin<-makeIndex(p.bin,inv=FALSE,ret=TRUE)
+  y<-substr(index(p.bin,0)[1],0,4)
+  plot.xts(p.bin,main=paste("Out of Sample Performance: ",y))
+  rm(p.bin)
 }
 
 # Looking at the error distributions...
-err<-list()
-for (i in 1:length(out)){
-  err[[i]]<-subset(-1*abs(out[[i]]$actual),subset=c(out[[i]]$sig.perf<0))
+err.bin<-list()
+for (i in 1:length(out.binary)){
+  err.bin[[i]]<-subset(-1*abs(out.binary[[i]]$actuals.pips),subset=c(out.binary[[i]]$sig.perf==-1))
 }
-plot(density(err[[1]]),col="dark grey",ylim=c(0,1100),xlim=c(-.0060,.0010),
+plot(density(err.bin[[1]]),col="dark grey",ylim=c(0,1100),xlim=c(-.0060,.0010),
      main="Error Densities for each sample year: 2008:2012")
-for (i in 2:length(out)) {
-  lines(density(err[[i]]),col="dark grey")
+for (i in 2:length(out.binary)) {
+  lines(density(err.bin[[i]]),col="dark grey")
 }
-merr<-sapply(err,MARGIN=2,FUN=mean)
-plot(density(merr),col="red",main="Density of Mean Error")
+merr.bin<-sapply(err.bin,MARGIN=2,FUN=mean)
+plot(density(merr.bin),col="red",main="Density of Mean Error")
 par(mfrow=c(1,1))
