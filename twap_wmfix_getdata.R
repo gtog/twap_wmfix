@@ -27,7 +27,7 @@ suppressWarnings(library(Quandl))
 
 # Global parameters should be defined here:
 data.source = c("yahoo")
-first.date<-c("2012-01-02/") # Base date for the analysis. 
+first.date<-c("2007-01-02/") # Base date for the analysis. 
 year<-substr(first.date,1,4)
 OHLC.indices<-c("Close") # Closing index value for the DAY...(ie. each DAY has an OHLC)
 OHLC.FX<-c("Close") # Closing bid FX price for the MINUTE...(ie. each MINUTE has an OHLC)

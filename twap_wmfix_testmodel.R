@@ -13,6 +13,9 @@ require(glmulti)
 require(leaps)
 require(rJava)
 require(MASS)
+require(fUnitRoots)
+require(tseries)
+
 suppressWarnings(library(zoo))
 suppressWarnings(library(xts))
 suppressWarnings(library(quantmod))
@@ -141,46 +144,125 @@ getOHLC<-function(assets,OHLC){
   }
   return(ret)
 }
+runSamples<-function(years,trainedmodel,binary){
+  # this function will run through a bunch of years and compare the results to whatever model is stored
+  # in trainedmodel. trainedmodel should be of class "lm" or "glm".
+  # years should be a vector of years, for example: years=c("2008","2009","2010","2012")
+  retlist<-list()
+  
+  for (i in 1:length(years)) {
+    newyear<-years[i]
+    if (years[i]=="2012" || years[i]=="2006") separ=c(",") else separ=c(";")
+    newdata<-read.csv(paste("~/R/R Projects/data/",newyear,"/DAT_ASCII_EURUSD_M1_",newyear,".csv",sep=""), sep=separ, quote="\"")
+    names(newdata)<-c("time_stamp","open_bid","high_bid","low_bid","close_bid","volume")
+    firstnewdate<-substr(newdata$time_stamp[1],0,8)
+    firstnewdate<-paste(substr(firstnewdate,0,4),"-",substr(firstnewdate,5,6),"-",substr(firstnewdate,7,8),"/",sep="")
+    
+    cat(firstnewdate)
+    
+    newLHS<-makeLHS(newdata,binary)
+    actuals.pips<-Hi(newLHS)
+    
+    cat("new LHS created successfully...","\n")
+    
+    newdf<-na.omit(merge.xts(Op(newLHS),OpCl(lag(IPC[firstnewdate],1)),join="left"))
+    newdf<-merge.xts(newdf,OpCl(lag(DOW,1)),join="inner")
+    newdf<-merge.xts(newdf,OpCl(lag(BSESN,1)),join="inner")
+    newdf<-merge.xts(newdf,OpCl(lag(GDAXI,1)),join="inner")
+    newdf<-merge.xts(newdf,OpCl(lag(SSMI,1)),join="inner")
+    newdf<-merge.xts(newdf,OpCl(lag(TA100,1)),join="inner")
+    newdf<-merge.xts(newdf,na.omit(lag(diff(DSWP2,1),1)),join="inner")
+    names(newdf)<-c("LHS.Open","IPC","DOW","BSESN","GDAXI","SSMI","TA100","DSWP2")
+    
+    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXUSAL),1)),join="inner") # AUDUSD 
+    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXINUS),1)),join="inner") # USDINR
+    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXBZUS),1)),join="inner") # USDBRL
+    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXCAUS),1)),join="inner") # USDCAD
+    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXUSEU),1)),join="inner") # EURUSD
+    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXJPUS),1)),join="inner") # USDJPY
+    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXMXUS),1)),join="inner") # USDMXN
+    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXKOUS),1)),join="inner") # USDKRW
+    
+    dts<-as.Date(index(newdf,0))
+    if (binary) {
+      newmod<-glm(trainedmodel,data=newdf,family=binomial(link="logit"))
+    } else {
+      newmod<-lm(trainedmodel,data=newdf)
+    }
+    
+    newdf<-merge.xts(newdf,na.omit(actuals.pips),join="inner") # Add the actuals.pips column, but after estimation...
+    
+    newactuals<-as.vector(newdf$LHS.Open)
+    newfitted<-as.vector(fitted(newmod))
+    plot(newactuals,type="l",col="dark grey",main=paste("Fit vs. Actuals in Year= ",years[i]))
+    lines(newfitted,col="blue")
+    
+    perf<-NULL
+    if (binary) {
+      for (j in 1:length(newfitted)){
+        if ((newfitted[j]>.5 && newactuals[j]>.5) || (newfitted[j]<.5 && newactuals[j]<.5)){
+          perf[j]<-1 # Trade was successful
+        } else {
+          perf[j]<-0 # Trade was not successful.
+        }
+      }
+      err.rate<-count(perf==0)$freq[2]/length(perf)
+    } else {
+      perf<-sign(newfitted)*sign(newactuals)
+      err.rate<-count(perf<0)$freq[2]/length(perf)
+    }
+    
+    newdf<-merge.xts(newdf,perf,join="inner") # Add the performance stats...
+    
+    retlist[[i]]<-data.frame(dts,newfitted,newdf$LHS.Open,perf,newdf$LHS.High)
+    names(retlist[[i]])<-c("dates","fitted","actual","sig.perf","actuals.pips")
+    
+    cat("Sample year complete. Error rate was: ",round(err.rate,4),"Starting next sample year.","\n")
+  }
+  cat("Finished all years. Returning data list and exiting.","\n")
+  return(retlist)
+} # Function for running out of sample years.
 
 # Now that we have a LHS constructor function that returns the LHS, the TWAP, and the fixing prices, 
 # we can move on to setting some variables to pass to the function and making a new response variable.
-
-data.names<-c("time_stamp","open_bid","high_bid","low_bid","close_bid","volume")
-
 # If any other pair other than eurusd, use the read.table(). See twap_wmfix_getdata lines 116-127.
-pair<-"eurusd"
 
+# Set some initial parameters...
+pair<-"eurusd"
+data.names<-c("time_stamp","open_bid","high_bid","low_bid","close_bid","volume")
 training.year=c("2007")
 train.data<-read.table(paste("~/R/R Projects/data/",training.year,"/DAT_ASCII_EURUSD_M1_",training.year,".csv",sep=""), sep=";", quote="\"")
 names(train.data)<-data.names
 first.train.date<-c("2007-01-03/")
 
-new.year=c("2010")
-new.data<-read.csv(paste("~/R/R Projects/data/",new.year,"/DAT_ASCII_EURUSD_M1_",new.year,".csv",sep=""), sep=";", quote="\"")
-names(new.data)<-data.names
-first.new.date<-c("2010-01-03/")
-
-# Check to make sure we have 2 good looking data sets from different years...
+# Check to make sure the data looks ok...
 head(train.data)
-head(new.data)
 
-# That all looks good. Don't proceed until the data looks proper. It should start at some time on January 1-5 and be 1 year's worth
-# of minute interval data.
-
-# Now, let's make our response (LHS) variable for our model. We have the function built and the data sets loaded.
+# Call makeLHS() to construct the response variable for our regression...
 train.LHS<-makeLHS(train.data,binary=FALSE)
+
+# While were at it, let's run an Augmented Dickey-Fuller test on the response variable we just created.
+# If the variable isn't stationary, we'll have problems. Given the nature of the variable, I would be surprised
+# if it weren't stationary:
+adf<-adf.test(train.LHS$LHS.Open,alternative="stationary")
+adf
 
 # The next step is to make a data frame that contains our LHS variable in the first column and all the independent (RHS)
 # variables in the subsequent columns. First we need to make sure we use getData() to load the variables we want. 
 # Note here, that we are using information from running the model a few times and eliminating variables we found
 # to be non-informative. If you were approaching this with no prior knowledge, you would want to use getData() to 
-# bring in more candidate independent variables.
+# bring in more candidate independent variables:
 
 data.source<-c("yahoo")
-model.tickers<-c("^IPC","DOW","^BSESN","^GDAXI","^SSMI","^TA100") #,"ELD","EMLC")
-fx.fred<-c("DEXUSAL","DEXINUS","DEXBZUS","DEXCAUS","DEXUSEU","DEXJPUS","DEXMXUS","DEXKOUS")
+model.tickers<-c("^IPC","^TA100","DOW","^BSESN","^GDAXI","^SSMI") #,"^TA100","^FCHI","DJC",
+                 #"^AORD","^SSEC","^HSI","^BSESN","^JKSE","^KLSE","^N225","^NZ50","^STI","^KS11","^TWII",
+                 #"^ATX","^BFX","^AEX","^FTSE","FEU")
+fx.fred<-c("DEXUSAL","DEXUSEU","DEXINUS","DEXBZUS","DEXCAUS","DEXMXUS","DEXKOUS","DEXJPUS")
+rate.fred<-c("DSWP2")
+
 suppressWarnings(getData(model.tickers,data.source))
 suppressWarnings(getData(fx.fred,"FRED"))
+suppressWarnings(getData(rate.fred,"FRED"))
 
 # Now assemble the data frame...edit this area to make the model you want.
 # Recall that OpCl(x) returns: [Cl(x)t - Op(x)t]/Op(x)t
@@ -188,38 +270,73 @@ suppressWarnings(getData(fx.fred,"FRED"))
 # day t. This information is contemporaneous to our TWAP calculation and cannot be known
 # in time to make predictions. Thus, we need OpCl(x)t-1 for each x. In general, the 
 # formula we are trying to estimate is:
-# Yt = Bo + Sum(Bi*OpCl(xi)t-1 + et)
+# Yt = Bo + Sum(Bi*OpCl(xi)t-1 + err)
 
 train.df<-na.omit(merge.xts(Op(train.LHS),OpCl(lag(IPC[first.train.date],1)),join="left"))
-train.df<-merge.xts(train.df,OpCl(lag(DOW,1)),join="inner")
-train.df<-merge.xts(train.df,OpCl(lag(BSESN,1)),join="inner")
-train.df<-merge.xts(train.df,OpCl(lag(GDAXI,1)),join="inner")
-train.df<-merge.xts(train.df,OpCl(lag(SSMI,1)),join="inner")
-train.df<-merge.xts(train.df,OpCl(lag(TA100,1)),join="inner")
-names(train.df)<-c("LHS.Open","OpClL1.IPC","OpClL1.DOW","OpClL1.BSESN","OpClL1.GDAXI","OpClL1.SSMI","OpClL1.TA100")
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(MXX,1)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(DOW,1)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(BSESN,1)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(GDAXI,1)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(SSMI,1)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(TA100,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(FCHI,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(DJC,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(AORD,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(SSEC,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(HSI,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(JKSE,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(KLSE,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(N225,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(NZ50,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(STI,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(KS11,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(TWII,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(ATX,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(BFX,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(AEX,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(FTSE,1)),join="inner"))
+#train.df<-na.omit(merge.xts(train.df,OpCl(lag(FEU,1)),join="inner"))
+
+train.df<-merge.xts(train.df,na.omit(lag(diff(DSWP2,1),1)),join="inner") # USD 2yr Swap rate change
+names(train.df)<-c("LHS.Open","IPC","DOW","BSESN","GDAXI","SSMI","TA100","DSWP2")
+
 # Same with Currency returns. We don't know today's currency return yet. We only know
 # yesterday's return. This known return is, relative to today: ln(CCy(t-2)/Ccy(t-1))
 train.df<-merge.xts(train.df,na.omit(lag(Return.calculate(DEXUSAL,method="log"),1)),join="inner") # AUDUSD 
-#train.df<-merge.xts(train.df,na.omit(Return.calculate(DEXINUS)),join="inner") # USDINR
+train.df<-merge.xts(train.df,na.omit(lag(Return.calculate(DEXINUS,method="log"),1)),join="inner") # USDINR
 train.df<-merge.xts(train.df,na.omit(lag(Return.calculate(DEXBZUS,method="log"),1)),join="inner") # USDBRL
-#train.df<-merge.xts(train.df,na.omit(Return.calculate(DEXCAUS)),join="inner") # USDCAD
+train.df<-merge.xts(train.df,na.omit(lag(Return.calculate(DEXCAUS,method="log"),1)),join="inner") # USDCAD 
 train.df<-merge.xts(train.df,na.omit(lag(Return.calculate(DEXUSEU,method="log"),1)),join="inner") # EURUSD
 train.df<-merge.xts(train.df,na.omit(lag(Return.calculate(DEXJPUS,method="log"),1)),join="inner") # USDJPY
 train.df<-merge.xts(train.df,na.omit(lag(Return.calculate(DEXMXUS,method="log"),1)),join="inner") # USDMXN
-#train.df<-merge.xts(train.df,na.omit(Return.calculate(DEXKOUS)),join="inner") # USDKRW
+train.df<-merge.xts(train.df,na.omit(lag(Return.calculate(DEXKOUS,method="log"),1)),join="inner") # USDKRW
 
-# NEW: Let's add some lagged variables of the currency pair were modeling. For example, let's
-# add the first 3 daily lags to the model and see what happens out of sample...
-ccy.lag1<-na.omit(lag(Return.calculate(DEXUSEU,method="log"),2))
-names(ccy.lag1)=c("DEXUSEU.1")
-ccy.lag2<-na.omit(lag(Return.calculate(DEXUSEU,method="log"),3))
-names(ccy.lag2)=c("DEXUSEU.2")
+# Try new things here:
+# Perhaps the 10am price - TWAP from the hours from, say, 7am-10am, is a good predictor of our
+# LHS variable. Let's find out:
 
-train.df<-merge.xts(train.df,ccy.lag1,join="inner") # ccy pair returns lagged 1 day
-train.df<-merge.xts(train.df,ccy.lag3,join="inner") # lagged 3 days
+fx.time.stamps<-makeTimeStamps(train.data$time_stamp)
+prices<-Cl(train.data)
+fx.allt<-xts(prices,order.by=fx.time.stamps)
+names(fx.allt)<-"fxrate"
+
+fix.prices<-fx.allt[index(fx.allt,0)$hour==10 & index(fx.allt,0)$min==0] # vector of all 10am prices...
+fix.dates<-as.Date(index(fix.prices,0))
+fix.prices<-xts(fix.prices,fix.dates)
+names(fix.prices)<-"fixing.rate"
+
+hour7to10<-fx.allt[(index(fx.allt,0)$hour>=7 & index(fx.allt,0)$hour<10)] # A vector of all the prices from 7am - 10am NYT.
+twap7to10<-aggregate(hour7to10$fxrate,as.Date(index(hour7to10,0)),mean) # THe TWAP from 7 to 10am NYT.
+names(twap7to10)<-"twap"
+
+twapdf<-merge.xts(fix.prices,twap7to10,join="inner")
+twapfixdiff<-twapdf$fixing.rate-twapdf$twap
+names(twapfixdiff)<-"twapfixdiff"
+
+train.df<-merge.xts(train.df,twapfixdiff,join="inner")
+
 
 train.df<-as.data.frame(train.df)
-
 # Let's have a look and make sure that looks good...
 head(train.df)
 
@@ -254,6 +371,7 @@ train.actuals<-as.vector(train.df$LHS.Open)
 train.fitted<-as.vector(fitted(train.model))
 plot(train.actuals,type="l",col="dark grey")
 lines(train.fitted,col="blue")
+abline(h=c(0),col="black")
 
 # We can also look at a plot of the residuals to see if there are any obvious problems:
 plot(residuals(train.model),type="l",col="red")
@@ -262,56 +380,14 @@ lines(train.fitted,col="blue")
 # We really want to know, "What percentage of the time are we on the correct side of the trade?" The answer is...
 train.signal.perf<-sign(train.fitted)*sign(train.actuals)
 plot(density(train.signal.perf),type="l",col="red")
-count(train.signal.perf<0)
+c<-count(train.signal.perf<0)
+cat("Error rate is: ",round(c$freq[2]/sum(c$freq),4),"\n")
 
 #...about 77% of the time. That's all well and good, but in order to have faith in the model, we need to 
 # see how the model performs when presented with NEW data. That is, we need to measure OUT OF SAMPLE performance.
-# Well, we've prepared for that with the creation of the new.data set. For this part of the process, we'll need to
-# create a new data frame with the new data:
+# The pseudo-code for running the out-of-sample tests is:
 
-new.LHS<-makeLHS(new.data) # The new response variable...
-
-new.df<-na.omit(merge.xts(Op(new.LHS),OpCl(IPC[first.new.date]),join="left"))
-names(new.df)<-c("LHS.Open","OpCl.IPC")
-new.df<-merge.xts(new.df,OpCl(DOW),join="inner")
-new.df<-merge.xts(new.df,OpCl(BSESN),join="inner")
-new.df<-merge.xts(new.df,OpCl(GDAXI),join="inner")
-new.df<-merge.xts(new.df,OpCl(SSMI),join="inner")
-new.df<-merge.xts(new.df,OpCl(TA100),join="inner")
-new.df<-merge.xts(new.df,na.omit(Return.calculate(DEXUSAL)),join="inner") # AUDUSD 
-new.df<-merge.xts(new.df,na.omit(Return.calculate(DEXINUS)),join="inner") # USDINR
-new.df<-merge.xts(new.df,na.omit(Return.calculate(DEXBZUS)),join="inner") # USDBRL
-new.df<-merge.xts(new.df,na.omit(Return.calculate(DEXCAUS)),join="inner") # USDCAD
-new.df<-merge.xts(new.df,na.omit(Return.calculate(DEXUSEU)),join="inner") # EURUSD
-new.df<-merge.xts(new.df,na.omit(Return.calculate(DEXJPUS)),join="inner") # USDJPY
-new.df<-merge.xts(new.df,na.omit(Return.calculate(DEXMXUS)),join="inner") # USDMXN
-new.df<-merge.xts(new.df,na.omit(Return.calculate(DEXKOUS)),join="inner") # USDKRW
-
-head(new.df)
-
-# We don't want to estimate a new model, we want to use the one estimated on the training data: train.form
-new.model<-lm(train.form,data=new.df)
-summary(new.model)
-
-new.actuals<-as.vector(new.df$LHS.Open)
-new.fitted<-as.vector(fitted(new.model))
-plot(new.actuals,type="l",col="dark grey")
-lines(new.fitted,col="blue")
-
-plot(residuals(new.model),type="l",col="red")
-
-# So, once we're in production, how often are we on the right side of the trade?
-new.signal.perf<-sign(new.fitted)*sign(new.actuals)
-plot(density(new.signal.perf),col="red",ylim=c(0,1.3))
-lines(density(train.signal.perf),col="dark grey")
-count(new.signal.perf<0)
-
-# The model performance has degraded on an out of sample basis from 23% error rate to 26% error rate.
-# Whether that is acceptable or not is something we'll have to debate. We can easily now test the performance
-# over many NEW data sets and see how we fare, assuming we never update the coefficients of the model, or
-# perhaps under some other updating rule (daily, monthly, quarterly updating etc.). Ok, so let's run all the years
-# we have. Here are the steps:
-# 1. Set new.year
+# 1. Set new year
 # 2. Get the new data
 # 3. make new LHS
 # 4. make new DF
@@ -322,119 +398,56 @@ count(new.signal.perf<0)
 sample.years<-c("2008","2009","2010","2011","2012")
 sample.model<-train.model # Currently 2007 trained...
 
-runSamples<-function(years,trainedmodel,binary){
-  # this function will run through a bunch of years and compare the results to whatever model is stored
-  # in trainedmodel. trainedmodel should be of class "lm" or "glm".
-  # years should be a vector of years, for example: years=c("2008","2009","2010","2012")
-  retlist<-list()
-  
-  for (i in 1:length(years)) {
-    newyear<-years[i]
-    if (years[i]=="2012" || years[i]=="2006") separ=c(",") else separ=c(";")
-    newdata<-read.csv(paste("~/R/R Projects/data/",newyear,"/DAT_ASCII_EURUSD_M1_",newyear,".csv",sep=""), sep=separ, quote="\"")
-    names(newdata)<-c("time_stamp","open_bid","high_bid","low_bid","close_bid","volume")
-    firstnewdate<-substr(newdata$time_stamp[1],0,8)
-    firstnewdate<-paste(substr(firstnewdate,0,4),"-",substr(firstnewdate,5,6),"-",substr(firstnewdate,7,8),"/",sep="")
-    
-    cat(firstnewdate)
-    
-    newLHS<-makeLHS(newdata,binary)
-    actuals.pips<-Hi(newLHS)
-    
-    newdf<-na.omit(merge.xts(Op(newLHS),OpCl(IPC[firstnewdate]),join="left"))
-    names(newdf)<-c("LHS.Open","OpCl.IPC")
-    newdf<-merge.xts(newdf,OpCl(DOW),join="inner")
-    newdf<-merge.xts(newdf,OpCl(BSESN),join="inner")
-    newdf<-merge.xts(newdf,OpCl(GDAXI),join="inner")
-    newdf<-merge.xts(newdf,OpCl(SSMI),join="inner")
-    newdf<-merge.xts(newdf,OpCl(TA100),join="inner")
-    newdf<-merge.xts(newdf,na.omit(Return.calculate(DEXUSAL)),join="inner") # AUDUSD 
-    newdf<-merge.xts(newdf,na.omit(Return.calculate(DEXINUS)),join="inner") # USDINR
-    newdf<-merge.xts(newdf,na.omit(Return.calculate(DEXBZUS)),join="inner") # USDBRL
-    newdf<-merge.xts(newdf,na.omit(Return.calculate(DEXCAUS)),join="inner") # USDCAD
-    newdf<-merge.xts(newdf,na.omit(Return.calculate(DEXUSEU)),join="inner") # EURUSD
-    newdf<-merge.xts(newdf,na.omit(Return.calculate(DEXJPUS)),join="inner") # USDJPY
-    newdf<-merge.xts(newdf,na.omit(Return.calculate(DEXMXUS)),join="inner") # USDMXN
-    newdf<-merge.xts(newdf,na.omit(Return.calculate(DEXKOUS)),join="inner") # USDKRW
-
-    dts<-as.Date(index(newdf,0))
-    if (binary) {
-      newmod<-glm(traindedmodel,data=newdf,family=binomial(link="logit"))
-    } else {
-      newmod<-lm(traindedmodel,data=newdf)
-    }
-    
-    newdf<-merge.xts(newdf,na.omit(actuals.pips),join="inner") # Add the actuals.pips column, but after estimation...
-    
-    newactuals<-as.vector(newdf$LHS.Open)
-    newfitted<-as.vector(fitted(newmod))
-    plot(newactuals,type="l",col="dark grey",main=paste("Fit vs. Actuals in Year= ",years[i]))
-    lines(newfitted,col="blue")
-    
-    perf<-NULL
-    if (binary) {
-      for (j in 1:length(newfitted)){
-        if ((newfitted[j]>.5 && newactuals[j]>.5) || (newfitted[j]<.5 && newactuals[j]<.5)){
-          perf[j]<-1 # Trade was successful
-        } else {
-          perf[j]<-0 # Trade was not successful.
-        }
-      }
-      err.rate<-count(perf==0)$freq[2]/length(perf)
-    } else {
-      perf<-sign(newfitted)*sign(newactuals)
-      err.rate<-count(perf<0)$freq[2]/length(perf)
-    }
-    
-    newdf<-merge.xts(newdf,perf,join="inner") # Add the performance stats...
-    
-    retlist[[i]]<-data.frame(dts,newfitted,newdf$LHS.Open,perf,newdf$LHS.High)
-    names(retlist[[i]])<-c("dates","fitted","actual","sig.perf","actuals.pips")
-    
-    cat("Sample year complete. Error rate was: ",round(err.rate,4),"Starting next sample year.","\n")
-  }
-  cat("Finished all years. Returning data list and exiting.","\n")
-  return(retlist)
-}
 out<-runSamples(sample.years,sample.model,binary=FALSE)
 
 # Let's create some strategy performance metrics...
 # For each out-of-sample year, we want to look at each day and measure how well we did. We'll store this 
 # information in a new performance vector containing:
 # 1. The trade date
-# 2. What trade we did
-# 3. The pips we captured or lost on the trade.
+# 2. The pips we captured or lost on the trade.
 # The 'out' variable we created above is enough to construct our performance vector.
 
 # For each year we've collected, look at each day...
-# If the variable sig.perf==1, then we are at least doing the correct trade...
+# If the variable sig.perf==1, then we at least did the correct trade on that day...
 # In this case our P/L = +actual.
 # If the variable sig.perf==-1, then we are on the wrong side of the trade...
 # In this case, our P/L = -actual. 
 
 profit<-NULL
+bidoffer<-.0002
 for (i in 1:length(out)) {
-  p<-xts(out[[i]]$sig.perf*abs(out[[i]]$actual),as.Date(out[[i]]$date))
+  p<-xts(out[[i]]$sig.perf*abs(out[[i]]$actual)-bidoffer,as.Date(out[[i]]$date))
   profit<-append(profit,p)
 }
 profit.index<-makeIndex(profit,inv=FALSE,ret=TRUE)
 plot.xts(profit.index, main="Out of Sample Performance: Cumulative")
 
-# or...we can look at each year's performance.
+charts.PerformanceSummary(profit, Rf = 0, main = "Performance Summary", geometric=FALSE, 
+                          methods = "none", width = 0, event.labels = FALSE, 
+                          wealth.index = TRUE, gap = 12, begin ="first", 
+                          legend.loc = "topleft", 
+                          p=0.95)
+
+table.AnnualizedReturns(profit, scale = NA, Rf = 0, geometric = FALSE, digits = 4)
+
+
+# or...we can look at each year's performance individually...
 par(mfrow=c(2,2))
 
 for (i in 1:length(out)){
-  p<-xts(out[[i]]$sig.perf*abs(out[[i]]$actual),as.Date(out[[i]]$date))
+  p<-xts(out[[i]]$sig.perf*abs(out[[i]]$actual)-bidoffer,as.Date(out[[i]]$date))
   p<-makeIndex(p,inv=FALSE,ret=TRUE)
   y<-substr(index(p,0)[1],0,4)
   plot.xts(p,main=paste("Out of Sample Performance: ",y))
   rm(p)
 }
 
-# Looking at the error distributions...
+# Here is a look at the distribution of errors. That is, all of the times we got the wrong
+# signal, how were the losses distributed?
+
 err<-list()
 for (i in 1:length(out)){
-  err[[i]]<-subset(-1*abs(out[[i]]$actual),subset=c(out[[i]]$sig.perf<0))
+  err[[i]]<-subset(-1*abs(out[[i]]$actual-bidoffer),subset=c(out[[i]]$sig.perf<0))
 }
 plot(density(err[[1]]),col="dark grey",ylim=c(0,1100),xlim=c(-.0060,.0010),
      main="Error Densities for each sample year: 2008:2012")
@@ -444,6 +457,10 @@ for (i in 2:length(out)) {
 merr<-sapply(err,MARGIN=2,FUN=mean)
 plot(density(merr),col="red",main="Density of Mean Error")
 par(mfrow=c(1,1))
+
+
+
+
 
 # Experiment: Create a new response variable which is either "Above" == 1 or "Below"==0
 # to represent cases where the FIX - TWAP > 0 and FIX - TWAP < 0. This is similar to our sign.perf
@@ -458,20 +475,26 @@ par(mfrow=c(1,1))
 
 train.bin.LHS<-makeLHS(train.data,binary=TRUE)
 
-train.df<-na.omit(merge.xts(Op(train.bin.LHS),OpCl(lag(IPC[first.train.date],1)),join="left"))
-train.df<-merge.xts(train.df,OpCl(lag(DOW,1)),join="inner")
-train.df<-merge.xts(train.df,OpCl(lag(BSESN,1)),join="inner")
-train.df<-merge.xts(train.df,OpCl(lag(GDAXI,1)),join="inner")
-train.df<-merge.xts(train.df,OpCl(lag(SSMI,1)),join="inner")
-train.df<-merge.xts(train.df,OpCl(lag(TA100,1)),join="inner")
-names(train.df)<-c("LHS.Open","OpClL1.IPC","OpClL1.DOW","OpClL1.BSESN","OpClL1.GDAXI","OpClL1.SSMI","OpClL1.TA100")
-train.df<-merge.xts(train.df,na.omit(lag(Return.calculate(DEXUSAL,method="log"),1)),join="inner") # AUDUSD 
-train.df<-merge.xts(train.df,na.omit(lag(Return.calculate(DEXBZUS,method="log"),1)),join="inner") # USDBRL
-train.df<-merge.xts(train.df,na.omit(lag(Return.calculate(DEXUSEU,method="log"),1)),join="inner") # EURUSD
-train.df<-merge.xts(train.df,na.omit(lag(Return.calculate(DEXJPUS,method="log"),1)),join="inner") # USDJPY
-train.df<-merge.xts(train.df,na.omit(lag(Return.calculate(DEXMXUS,method="log"),1)),join="inner") # USDMXN
-train.df<-as.data.frame(train.df)
-head(train.df)
+model.bin.tickers<-c("^IPC","DOW","^BSESN","^GDAXI","^SSMI","^TA100")
+#"^AORD","^SSEC","^HSI","^BSESN","^JKSE","^KLSE","^N225","^NZ50","^STI","^KS11","^TWII",
+#"^ATX","^BFX","^AEX","^FTSE","FEU")
+suppressWarnings(getData(model.bin.tickers,data.source))
+
+
+train.bin.df<-na.omit(merge.xts(Op(train.bin.LHS),OpCl(lag(IPC[first.train.date],1)),join="left"))
+train.bin.df<-merge.xts(train.bin.df,OpCl(lag(DOW,1)),join="inner")
+train.bin.df<-merge.xts(train.bin.df,OpCl(lag(BSESN,1)),join="inner")
+train.bin.df<-merge.xts(train.bin.df,OpCl(lag(GDAXI,1)),join="inner")
+train.bin.df<-merge.xts(train.bin.df,OpCl(lag(SSMI,1)),join="inner")
+train.bin.df<-merge.xts(train.bin.df,OpCl(lag(TA100,1)),join="inner")
+names(train.bin.df)<-c("LHS.Open","IPC","DOW","BSESN","GDAXI","SSMI","TA100")
+train.bin.df<-merge.xts(train.bin.df,na.omit(lag(Return.calculate(DEXUSAL,method="log"),1)),join="inner") # AUDUSD 
+train.bin.df<-merge.xts(train.bin.df,na.omit(lag(Return.calculate(DEXBZUS,method="log"),1)),join="inner") # USDBRL
+train.bin.df<-merge.xts(train.bin.df,na.omit(lag(Return.calculate(DEXUSEU,method="log"),1)),join="inner") # EURUSD
+train.bin.df<-merge.xts(train.bin.df,na.omit(lag(Return.calculate(DEXJPUS,method="log"),1)),join="inner") # USDJPY
+train.bin.df<-merge.xts(train.bin.df,na.omit(lag(Return.calculate(DEXMXUS,method="log"),1)),join="inner") # USDMXN
+train.bin.df<-as.data.frame(train.bin.df)
+head(train.bin.df)
 
 
 # Now we have a data frame with a binary response variable and all the corresponding RHS variables.
@@ -481,8 +504,8 @@ my.glm<-function (formula,data,...) {
   glm(as.formula(paste(deparse(formula))),data=data,family=binomial(link="logit"),...)
 }
 
-train.fit<-glmulti(LHS.Open~., 
-                   data=train.df, 
+train.bin.fit<-glmulti(LHS.Open~., 
+                   data=train.bin.df, 
                    intercept=TRUE,
                    level=2,
                    marginality=FALSE,
@@ -498,27 +521,27 @@ train.fit<-glmulti(LHS.Open~.,
                    confsetsize=1000)
 
 # We can store the formula for our "best" model from the genetic algorithm in train.form:
-train.form<-as.formula(summary(train.fit)$bestmodel)
-train.model<-glm(train.form,data=train.df,family=binomial(link="logit"))
+train.bin.form<-as.formula(summary(train.bin.fit)$bestmodel)
+train.bin.model<-glm(train.bin.form,data=train.bin.df,family=binomial(link="logit"))
 # Let's have a look a summary of our derived model:
-summary(train.model) 
+summary(train.bin.model) 
 
 # Let's look at how well our model fits the actual values in the training data set:
-train.actuals<-as.vector(train.df$LHS.Open)
-train.fitted<-as.vector(fitted(train.model))
-train.fitted[train.fitted<.5]<-0
-train.fitted[train.fitted>.5]<-1
-plot(train.actuals,type="l",col="grey")
-lines(train.fitted,col="light blue")
-abline(h=c(.50),col="green")
+train.bin.actuals<-as.vector(train.bin.df$LHS.Open)
+train.bin.fitted<-as.vector(fitted(train.bin.model))
+train.bin.fitted[train.bin.fitted<.5]<-0
+train.bin.fitted[train.bin.fitted>.5]<-1
+plot(train.bin.actuals,type="l",col="grey")
+lines(train.bin.fitted,col="light blue")
+abline(h=c(.50),col="black")
 
-train.err<-abs(train.actuals-train.fitted) # 0 means no error, 1 means trade error.
-plot(density(train.err))
-count(train.err) # Very similar error rate to previous estimation.
+train.bin.err<-abs(train.bin.actuals-train.bin.fitted) # 0 means no error, 1 means trade error.
+plot(density(train.bin.err))
+count(train.bin.err) # Very similar error rate to previous estimation.
 
-sample.years<-c("2008","2009","2010","2011","2012")
-sample.model<-train.model # Currently 2007 trained...
-out.binary<-runSamples(sample.years,sample.model,binary=TRUE)
+sample.bin.years<-c("2008","2009","2010","2011","2012")
+sample.bin.model<-train.bin.model # Currently 2007 trained...
+out.binary<-runSamples(sample.bin.years,sample.bin.model,binary=TRUE)
 
 profit.bin<-NULL
 for (i in 1:length(out.binary)) {
