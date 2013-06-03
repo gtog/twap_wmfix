@@ -15,6 +15,7 @@ require(rJava)
 require(MASS)
 require(fUnitRoots)
 require(tseries)
+require(rms)
 
 suppressWarnings(library(zoo))
 suppressWarnings(library(xts))
@@ -24,7 +25,6 @@ suppressWarnings(library(ggplot2))
 suppressWarnings(library(plyr))
 suppressWarnings(library(knitr))
 suppressWarnings(library(chron))
-suppressWarnings(library(glmulti))
 suppressWarnings(library(Quandl))
 
 # We also need the makeTimeStamps() function from twap_wmfix_buildmodel.R...
