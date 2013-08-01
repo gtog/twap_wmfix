@@ -231,7 +231,8 @@ runSamples<-function(years,trainedmodel,binary){
 pair<-"eurusd"
 data.names<-c("time_stamp","open_bid","high_bid","low_bid","close_bid","volume")
 training.year=c("2007")
-train.data<-read.table(paste("~/R/R Projects/data/",training.year,"/DAT_ASCII_EURUSD_M1_",training.year,".csv",sep=""), sep=";", quote="\"")
+path<-c("~/Downloads/hist_data/")
+train.data<-read.table(paste(path,training.year,"/DAT_ASCII_EURUSD_M1_",training.year,".csv",sep=""), sep=";", quote="\"")
 names(train.data)<-data.names
 first.train.date<-c("2007-01-03/")
 
@@ -254,9 +255,9 @@ adf
 # bring in more candidate independent variables:
 
 data.source<-c("yahoo")
-model.tickers<-c("^IPC","^TA100","DOW","^BSESN","^GDAXI","^SSMI") #,"^TA100","^FCHI","DJC",
-                 #"^AORD","^SSEC","^HSI","^BSESN","^JKSE","^KLSE","^N225","^NZ50","^STI","^KS11","^TWII",
-                 #"^ATX","^BFX","^AEX","^FTSE","FEU")
+model.tickers<-c("^IPC","^TA100","DOW","^BSESN","^GDAXI","^SSMI","^FCHI","DJC",
+                 "^AORD","^SSEC","^HSI","^BSESN","^JKSE","^KLSE","^N225","^NZ50","^STI","^KS11","^TWII",
+                 "^ATX","^BFX","^AEX","^FTSE","FEU")
 fx.fred<-c("DEXUSAL","DEXUSEU","DEXINUS","DEXBZUS","DEXCAUS","DEXMXUS","DEXKOUS","DEXJPUS")
 rate.fred<-c("DSWP2")
 
@@ -271,34 +272,34 @@ suppressWarnings(getData(rate.fred,"FRED"))
 # in time to make predictions. Thus, we need OpCl(x)t-1 for each x. In general, the 
 # formula we are trying to estimate is:
 # Yt = Bo + Sum(Bi*OpCl(xi)t-1 + err)
-
-train.df<-na.omit(merge.xts(Op(train.LHS),OpCl(lag(IPC[first.train.date],1)),join="left"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(MXX,1)),join="inner"))
-train.df<-na.omit(merge.xts(train.df,OpCl(lag(DOW,1)),join="inner"))
-train.df<-na.omit(merge.xts(train.df,OpCl(lag(BSESN,1)),join="inner"))
-train.df<-na.omit(merge.xts(train.df,OpCl(lag(GDAXI,1)),join="inner"))
-train.df<-na.omit(merge.xts(train.df,OpCl(lag(SSMI,1)),join="inner"))
-train.df<-na.omit(merge.xts(train.df,OpCl(lag(TA100,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(FCHI,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(DJC,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(AORD,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(SSEC,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(HSI,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(JKSE,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(KLSE,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(N225,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(NZ50,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(STI,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(KS11,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(TWII,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(ATX,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(BFX,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(AEX,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(FTSE,1)),join="inner"))
-#train.df<-na.omit(merge.xts(train.df,OpCl(lag(FEU,1)),join="inner"))
-
-train.df<-merge.xts(train.df,na.omit(lag(diff(DSWP2,1),1)),join="inner") # USD 2yr Swap rate change
-names(train.df)<-c("LHS.Open","IPC","DOW","BSESN","GDAXI","SSMI","TA100","DSWP2")
+lag.length<-1
+train.df<-na.omit(merge.xts(Op(train.LHS),OpCl(lag(IPC[first.train.date],lag.length))),join="left")
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(TA100,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(DOW,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(BSESN,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(GDAXI,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(SSMI,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(FCHI,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(DJC,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(AORD,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(SSEC,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(HSI,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(JKSE,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(KLSE,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(N225,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(NZ50,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(STI,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(KS11,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(TWII,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(ATX,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(BFX,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(AEX,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(FTSE,lag.length)),join="inner"))
+train.df<-na.omit(merge.xts(train.df,OpCl(lag(FEU,lag.length)),join="inner"))
+train.df<-merge.xts(train.df,na.omit(lag(diff(DSWP2,1),lag.length)),join="inner") # USD 2yr Swap rate change
+names(train.df)<-c("LHS.Open","IPC","TA100","DOW","BSESN","GDAXI","SSMI","FCHI","DJC",
+                   "AORD","SSEC","HSI","JKSE","KLSE","N225","NZ50","STI","KS11","TWII",
+                   "ATX","BFX","AEX","FTSE","FEU","US2YSWP")
 
 # Same with Currency returns. We don't know today's currency return yet. We only know
 # yesterday's return. This known return is, relative to today: ln(CCy(t-2)/Ccy(t-1))
@@ -345,20 +346,21 @@ head(train.df)
 # a coffee while this one runs...
 
 train.fit<-glmulti(LHS.Open~., 
-              data=train.df, 
-              intercept=TRUE,
-              level=2,
-              marginality=FALSE,
-              minsize=-1, # -1 = no constraint
-              maxsize=-1,
-              minK=-1,
-              maxK=-1,
-              crit=aic, 
-              fitfunc=lm, 
-              method="g", # "h"=exhaustive, "g"=genetic algorithm, "l"=very fast, exhaustive, branch and bound, "d"=simple summary
-              plotty=FALSE, #plot progression of IC profile while running...
-              report=TRUE,
-              confsetsize=1000)
+                   data=train.df, 
+                   intercept=TRUE,
+                   level=1,
+                   marginality=FALSE,
+                   minsize=-1, # -1 = no constraint
+                   maxsize=-1,
+                   minK=-1,
+                   maxK=-1,
+                   crit=aic, 
+                   fitfunc=lm, 
+                   method="g", # "h"=exhaustive, "g"=genetic algorithm, "l"=very fast, exhaustive, branch and bound, "d"=simple summary
+                   plotty=FALSE, #plot progression of IC profile while running...
+                   report=TRUE,
+                   confsetsize=1000,
+                   deltaB=.20)
 
 # We can store the formula for our "best" model from the genetic algorithm in train.form:
 train.form<-as.formula(summary(train.fit)$bestmodel)
@@ -456,124 +458,4 @@ for (i in 2:length(out)) {
 }
 merr<-sapply(err,MARGIN=2,FUN=mean)
 plot(density(merr),col="red",main="Density of Mean Error")
-par(mfrow=c(1,1))
-
-
-
-
-
-# Experiment: Create a new response variable which is either "Above" == 1 or "Below"==0
-# to represent cases where the FIX - TWAP > 0 and FIX - TWAP < 0. This is similar to our sign.perf
-# variable which tries to capture whether we got the sign right. Meaning, did we have the right
-# trade on, regardless of the magnitude of the prediction error. By converting to a binary response
-# variable and estimating a logit regression, we should obtain similar results and perhaps our 
-# response variable will have more intuitive meaning. Prediction values above .5 indicate that the
-# fixing will come in above the TWAP and vice versa for values below .5.
-
-# To do this, I have modified the makeLHS() function to take a "binary" parameter. If set to true,
-# the makeLHS() function will return a binary response varible. 
-
-train.bin.LHS<-makeLHS(train.data,binary=TRUE)
-
-model.bin.tickers<-c("^IPC","DOW","^BSESN","^GDAXI","^SSMI","^TA100")
-#"^AORD","^SSEC","^HSI","^BSESN","^JKSE","^KLSE","^N225","^NZ50","^STI","^KS11","^TWII",
-#"^ATX","^BFX","^AEX","^FTSE","FEU")
-suppressWarnings(getData(model.bin.tickers,data.source))
-
-
-train.bin.df<-na.omit(merge.xts(Op(train.bin.LHS),OpCl(lag(IPC[first.train.date],1)),join="left"))
-train.bin.df<-merge.xts(train.bin.df,OpCl(lag(DOW,1)),join="inner")
-train.bin.df<-merge.xts(train.bin.df,OpCl(lag(BSESN,1)),join="inner")
-train.bin.df<-merge.xts(train.bin.df,OpCl(lag(GDAXI,1)),join="inner")
-train.bin.df<-merge.xts(train.bin.df,OpCl(lag(SSMI,1)),join="inner")
-train.bin.df<-merge.xts(train.bin.df,OpCl(lag(TA100,1)),join="inner")
-names(train.bin.df)<-c("LHS.Open","IPC","DOW","BSESN","GDAXI","SSMI","TA100")
-train.bin.df<-merge.xts(train.bin.df,na.omit(lag(Return.calculate(DEXUSAL,method="log"),1)),join="inner") # AUDUSD 
-train.bin.df<-merge.xts(train.bin.df,na.omit(lag(Return.calculate(DEXBZUS,method="log"),1)),join="inner") # USDBRL
-train.bin.df<-merge.xts(train.bin.df,na.omit(lag(Return.calculate(DEXUSEU,method="log"),1)),join="inner") # EURUSD
-train.bin.df<-merge.xts(train.bin.df,na.omit(lag(Return.calculate(DEXJPUS,method="log"),1)),join="inner") # USDJPY
-train.bin.df<-merge.xts(train.bin.df,na.omit(lag(Return.calculate(DEXMXUS,method="log"),1)),join="inner") # USDMXN
-train.bin.df<-as.data.frame(train.bin.df)
-head(train.bin.df)
-
-
-# Now we have a data frame with a binary response variable and all the corresponding RHS variables.
-# Now we can estimate the model using glm instead of lm with a family designation of "binary"...
-
-my.glm<-function (formula,data,...) {
-  glm(as.formula(paste(deparse(formula))),data=data,family=binomial(link="logit"),...)
-}
-
-train.bin.fit<-glmulti(LHS.Open~., 
-                   data=train.bin.df, 
-                   intercept=TRUE,
-                   level=2,
-                   marginality=FALSE,
-                   minsize=-1, # -1 = no constraint
-                   maxsize=-1,
-                   minK=-1,
-                   maxK=-1,
-                   crit=aic, 
-                   fitfunc=my.glm, 
-                   method="g", # "h"=exhaustive, "g"=genetic algorithm, "l"=very fast, exhaustive, branch and bound, "d"=simple summary
-                   plotty=FALSE, #plot progression of IC profile while running...
-                   report=TRUE,
-                   confsetsize=1000)
-
-# We can store the formula for our "best" model from the genetic algorithm in train.form:
-train.bin.form<-as.formula(summary(train.bin.fit)$bestmodel)
-train.bin.model<-glm(train.bin.form,data=train.bin.df,family=binomial(link="logit"))
-# Let's have a look a summary of our derived model:
-summary(train.bin.model) 
-
-# Let's look at how well our model fits the actual values in the training data set:
-train.bin.actuals<-as.vector(train.bin.df$LHS.Open)
-train.bin.fitted<-as.vector(fitted(train.bin.model))
-train.bin.fitted[train.bin.fitted<.5]<-0
-train.bin.fitted[train.bin.fitted>.5]<-1
-plot(train.bin.actuals,type="l",col="grey")
-lines(train.bin.fitted,col="light blue")
-abline(h=c(.50),col="black")
-
-train.bin.err<-abs(train.bin.actuals-train.bin.fitted) # 0 means no error, 1 means trade error.
-plot(density(train.bin.err))
-count(train.bin.err) # Very similar error rate to previous estimation.
-
-sample.bin.years<-c("2008","2009","2010","2011","2012")
-sample.bin.model<-train.bin.model # Currently 2007 trained...
-out.binary<-runSamples(sample.bin.years,sample.bin.model,binary=TRUE)
-
-profit.bin<-NULL
-for (i in 1:length(out.binary)) {
-  out.binary[[i]]$sig.perf[out.binary[[i]]$sig.perf==0]<--1
-  p.bin<-xts(out.binary[[i]]$sig.perf*abs(out.binary[[i]]$actuals.pips),as.Date(out.binary[[i]]$dates))
-  profit.bin<-append(profit.bin,p.bin)
-}
-profit.bin.index<-makeIndex(profit.bin,inv=FALSE,ret=TRUE)
-plot.xts(profit.bin.index, main="Out of Sample Performance: Cumulative")
-
-# or...we can look at each year's performance.
-par(mfrow=c(2,2))
-
-for (i in 1:length(out.binary)){
-  out.binary[[i]]$sig.perf[out.binary[[i]]$sig.perf==0]<--1
-  p.bin<-xts(out.binary[[i]]$sig.perf*abs(out.binary[[i]]$actuals.pips),as.Date(out.binary[[i]]$dates))
-  p.bin<-makeIndex(p.bin,inv=FALSE,ret=TRUE)
-  y<-substr(index(p.bin,0)[1],0,4)
-  plot.xts(p.bin,main=paste("Out of Sample Performance: ",y))
-  rm(p.bin)
-}
-
-# Looking at the error distributions...
-err.bin<-list()
-for (i in 1:length(out.binary)){
-  err.bin[[i]]<-subset(-1*abs(out.binary[[i]]$actuals.pips),subset=c(out.binary[[i]]$sig.perf==-1))
-}
-plot(density(err.bin[[1]]),col="dark grey",ylim=c(0,1100),xlim=c(-.0060,.0010),
-     main="Error Densities for each sample year: 2008:2012")
-for (i in 2:length(out.binary)) {
-  lines(density(err.bin[[i]]),col="dark grey")
-}
-merr.bin<-sapply(err.bin,MARGIN=2,FUN=mean)
-plot(density(merr.bin),col="red",main="Density of Mean Error")
 par(mfrow=c(1,1))
