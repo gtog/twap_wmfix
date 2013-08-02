@@ -90,12 +90,14 @@ makeTimeStamps<-function(rawts) {
   ret<-strptime(newstamps,"%Y-%m-%d %H:%M:%S")
   return(ret)
 }
-getData<-function(tickers,datasrc){
+getData<-function(tickers,datasrc,start,end){
   for (i in 1:length(tickers)){
     cat(tickers[i],i,"\n")
     getSymbols(tickers[i],src=datasrc,
                auto.assign=getOption("getSymbols.auto.assign",TRUE),
-               env=parent.frame())
+               env=parent.frame(),
+               from=start,
+               to=end)
   }
 }
 makeIndex<-function(x,inv,ret){
@@ -144,7 +146,7 @@ getOHLC<-function(assets,OHLC){
   }
   return(ret)
 }
-runSamples<-function(years,trainedmodel,binary){
+runSamples<-function(years,path,trainedmodel,binary){
   # this function will run through a bunch of years and compare the results to whatever model is stored
   # in trainedmodel. trainedmodel should be of class "lm" or "glm".
   # years should be a vector of years, for example: years=c("2008","2009","2010","2012")
@@ -152,36 +154,37 @@ runSamples<-function(years,trainedmodel,binary){
   
   for (i in 1:length(years)) {
     newyear<-years[i]
-    if (years[i]=="2012" || years[i]=="2006") separ=c(",") else separ=c(";")
-    newdata<-read.csv(paste("~/R/R Projects/data/",newyear,"/DAT_ASCII_EURUSD_M1_",newyear,".csv",sep=""), sep=separ, quote="\"")
+    if (years[i]=="2006") separ=c(",") else separ=c(";")
+    newdata<-read.csv(paste(path,newyear,"/DAT_ASCII_EURUSD_M1_",newyear,".csv",sep=""), sep=separ, quote="\"")
     names(newdata)<-c("time_stamp","open_bid","high_bid","low_bid","close_bid","volume")
     firstnewdate<-substr(newdata$time_stamp[1],0,8)
     firstnewdate<-paste(substr(firstnewdate,0,4),"-",substr(firstnewdate,5,6),"-",substr(firstnewdate,7,8),"/",sep="")
     
     cat(firstnewdate)
+    #print(head(newdata))
     
     newLHS<-makeLHS(newdata,binary)
     actuals.pips<-Hi(newLHS)
     
-    cat("new LHS created successfully...","\n")
+    #cat("new LHS created successfully...","\n")
+    #print(head(newLHS))
     
-    newdf<-na.omit(merge.xts(Op(newLHS),OpCl(lag(IPC[firstnewdate],1)),join="left"))
-    newdf<-merge.xts(newdf,OpCl(lag(DOW,1)),join="inner")
-    newdf<-merge.xts(newdf,OpCl(lag(BSESN,1)),join="inner")
-    newdf<-merge.xts(newdf,OpCl(lag(GDAXI,1)),join="inner")
-    newdf<-merge.xts(newdf,OpCl(lag(SSMI,1)),join="inner")
-    newdf<-merge.xts(newdf,OpCl(lag(TA100,1)),join="inner")
-    newdf<-merge.xts(newdf,na.omit(lag(diff(DSWP2,1),1)),join="inner")
-    names(newdf)<-c("LHS.Open","IPC","DOW","BSESN","GDAXI","SSMI","TA100","DSWP2")
+    newdf<-na.omit(merge.xts(Op(newLHS),OpCl(lag(HSI[firstnewdate],1)),join="left"))
+    newdf<-merge.xts(newdf,OpCl(lag(NZ50,1)),join="inner")
+    newdf<-merge.xts(newdf,OpCl(lag(ATX,1)),join="inner")
+    newdf<-merge.xts(newdf,OpCl(lag(BFX,1)),join="inner")
+    newdf<-merge.xts(newdf,OpCl(lag(FTSE,1)),join="inner")
+    #newdf<-merge.xts(newdf,na.omit(lag(diff(DSWP2,1),1)),join="inner")
     
-    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXUSAL),1)),join="inner") # AUDUSD 
-    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXINUS),1)),join="inner") # USDINR
-    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXBZUS),1)),join="inner") # USDBRL
-    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXCAUS),1)),join="inner") # USDCAD
-    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXUSEU),1)),join="inner") # EURUSD
-    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXJPUS),1)),join="inner") # USDJPY
-    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXMXUS),1)),join="inner") # USDMXN
-    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXKOUS),1)),join="inner") # USDKRW
+    newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXBZUS),1)),join="inner") # AUDUSD 
+    #newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXINUS),1)),join="inner") # USDINR
+    #newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXBZUS),1)),join="inner") # USDBRL
+    #newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXCAUS),1)),join="inner") # USDCAD
+    #newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXUSEU),1)),join="inner") # EURUSD
+    #newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXJPUS),1)),join="inner") # USDJPY
+    #newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXMXUS),1)),join="inner") # USDMXN
+    #newdf<-merge.xts(newdf,na.omit(lag(Return.calculate(DEXKOUS),1)),join="inner") # USDKRW
+    names(newdf)<-c("LHS.Open","HSI","NZ50","ATX","BFX","FTSE","DEXBZUS")
     
     dts<-as.Date(index(newdf,0))
     if (binary) {
@@ -261,9 +264,9 @@ model.tickers<-c("^IPC","^TA100","DOW","^BSESN","^GDAXI","^SSMI","^FCHI","DJC",
 fx.fred<-c("DEXUSAL","DEXUSEU","DEXINUS","DEXBZUS","DEXCAUS","DEXMXUS","DEXKOUS","DEXJPUS")
 rate.fred<-c("DSWP2")
 
-suppressWarnings(getData(model.tickers,data.source))
-suppressWarnings(getData(fx.fred,"FRED"))
-suppressWarnings(getData(rate.fred,"FRED"))
+suppressWarnings(getData(model.tickers,data.source,start=first.train.date,end=Sys.Date()))
+suppressWarnings(getData(fx.fred,datasrc="FRED",start=first.train.date,end=Sys.Date()))
+suppressWarnings(getData(rate.fred,datasrc="FRED",start=first.train.date,end=Sys.Date()))
 
 # Now assemble the data frame...edit this area to make the model you want.
 # Recall that OpCl(x) returns: [Cl(x)t - Op(x)t]/Op(x)t
@@ -320,24 +323,19 @@ fx.time.stamps<-makeTimeStamps(train.data$time_stamp)
 prices<-Cl(train.data)
 fx.allt<-xts(prices,order.by=fx.time.stamps)
 names(fx.allt)<-"fxrate"
-
 fix.prices<-fx.allt[index(fx.allt,0)$hour==10 & index(fx.allt,0)$min==0] # vector of all 10am prices...
 fix.dates<-as.Date(index(fix.prices,0))
 fix.prices<-xts(fix.prices,fix.dates)
 names(fix.prices)<-"fixing.rate"
-
 hour7to10<-fx.allt[(index(fx.allt,0)$hour>=7 & index(fx.allt,0)$hour<10)] # A vector of all the prices from 7am - 10am NYT.
 twap7to10<-aggregate(hour7to10$fxrate,as.Date(index(hour7to10,0)),mean) # THe TWAP from 7 to 10am NYT.
 names(twap7to10)<-"twap"
-
 twapdf<-merge.xts(fix.prices,twap7to10,join="inner")
 twapfixdiff<-twapdf$fixing.rate-twapdf$twap
 names(twapfixdiff)<-"twapfixdiff"
-
 train.df<-merge.xts(train.df,twapfixdiff,join="inner")
-
-
 train.df<-as.data.frame(train.df)
+
 # Let's have a look and make sure that looks good...
 head(train.df)
 
@@ -347,8 +345,8 @@ head(train.df)
 
 train.fit<-glmulti(LHS.Open~., 
                    data=train.df, 
-                   intercept=TRUE,
-                   level=1,
+                   intercept=FALSE,
+                   level=2,
                    marginality=FALSE,
                    minsize=-1, # -1 = no constraint
                    maxsize=-1,
@@ -360,7 +358,7 @@ train.fit<-glmulti(LHS.Open~.,
                    plotty=FALSE, #plot progression of IC profile while running...
                    report=TRUE,
                    confsetsize=1000,
-                   deltaB=.20)
+                   deltaB=-.20)
 
 # We can store the formula for our "best" model from the genetic algorithm in train.form:
 train.form<-as.formula(summary(train.fit)$bestmodel)
@@ -385,9 +383,52 @@ plot(density(train.signal.perf),type="l",col="red")
 c<-count(train.signal.perf<0)
 cat("Error rate is: ",round(c$freq[2]/sum(c$freq),4),"\n")
 
-#...about 77% of the time. That's all well and good, but in order to have faith in the model, we need to 
-# see how the model performs when presented with NEW data. That is, we need to measure OUT OF SAMPLE performance.
-# The pseudo-code for running the out-of-sample tests is:
+# Before continuing to test the model out-of-sample, let's refit the model, but this time
+# we only use the variables derived from the first run, BUT we'll allow interaction terms.
+# This will have the effect of adding variables to the model, but we'll most likely be
+# able to catch some more of the larger spikes.
+
+model.names<-names(coef(train.model)) # Grab the predictor variable names from round 1...
+model.names[1]<-c("LHS.Open") 
+train.df.2<-subset(train.df,select=c(model.names)) # make a new training data set...
+
+# Now we can re-run the estimation process and allow for interaction terms. Of course,
+# we have missed any significant interaction terms that may have been present when the 
+# full training set was present, but that's ok. We can investigate that later.
+
+train.fit.2<-glmulti(LHS.Open~., 
+                     data=train.df.2, 
+                     intercept=FALSE,
+                     level=2, # THIS IS THE KEY CHANGE IN THE SECOND ITERATION. 2 allows interaction terms
+                     marginality=FALSE,
+                     minsize=-1, # -1 = no constraint
+                     maxsize=-1,
+                     minK=-1,
+                     maxK=-1,
+                     crit=aic, 
+                     fitfunc=lm, 
+                     method="g", # "h"=exhaustive, "g"=genetic algorithm, "l"=very fast, exhaustive, branch and bound, "d"=simple summary
+                     plotty=FALSE, #plot progression of IC profile while running...
+                     report=TRUE,
+                     deltaM=.10,
+)
+train.form.2<-as.formula(summary(train.fit.2)$bestmodel)
+train.model.2<-lm(train.form.2,data=train.df.2)
+summary(train.model.2) 
+
+train.actuals.2<-as.vector(train.df.2$LHS.Open)
+train.fitted.2<-as.vector(fitted(train.model.2))
+plot(train.actuals.2,type="l",col="dark grey")
+lines(train.fitted.2,col="blue")
+abline(h=c(0),col="black")
+
+train.signal.perf.2<-sign(train.fitted.2)*sign(train.actuals.2)
+plot(density(train.signal.perf.2),type="l",col="red")
+c<-count(train.signal.perf.2<0)
+cat("Error rate is: ",round(c$freq[2]/sum(c$freq),4),"\n")
+
+
+# Running out of sample tests:
 
 # 1. Set new year
 # 2. Get the new data
@@ -398,9 +439,9 @@ cat("Error rate is: ",round(c$freq[2]/sum(c$freq),4),"\n")
 # 7. return a list of fitted, actuals, and signal performance.
 
 sample.years<-c("2008","2009","2010","2011","2012")
-sample.model<-train.model # Currently 2007 trained...
+sample.model<-train.model.2 # Currently 2007 trained...
 
-out<-runSamples(sample.years,sample.model,binary=FALSE)
+out<-runSamples(sample.years,path,sample.model,binary=FALSE)
 
 # Let's create some strategy performance metrics...
 # For each out-of-sample year, we want to look at each day and measure how well we did. We'll store this 
@@ -431,7 +472,7 @@ charts.PerformanceSummary(profit, Rf = 0, main = "Performance Summary", geometri
                           p=0.95)
 
 table.AnnualizedReturns(profit, scale = NA, Rf = 0, geometric = FALSE, digits = 4)
-
+table.Drawdowns(profit)
 
 # or...we can look at each year's performance individually...
 par(mfrow=c(2,2))
